@@ -60,6 +60,9 @@ interface Order {
   trxId: string;
   shippingAddress?: UserAddress;
   billingAddress?: UserAddress;
+  userEmail?: string;
+  userName?: string;
+  userPhone?: string;
 }
 
 interface UserData {
@@ -97,27 +100,23 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserData | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   
-  // Filtering state
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Auth State
   const [authPersona, setAuthPersona] = useState<'user' | 'admin' | null>(null);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [authStep, setAuthStep] = useState<'persona' | 'form'>('persona');
   const [isSending, setIsSending] = useState(false);
   
   const [currentTab, setCurrentTab] = useState<NavigationTab>(NavigationTab.HOME);
-  const [accountSubView, setAccountSubView] = useState<'menu' | 'information' | 'addresses' | 'orders' | 'inventory' | 'reviews' | 'saved-carts'>('menu');
+  const [accountSubView, setAccountSubView] = useState<'menu' | 'information' | 'addresses' | 'orders' | 'inventory' | 'reviews' | 'saved-carts' | 'confirmed-orders'>('menu');
   
-  // Checkout States
   const [checkoutStep, setCheckoutStep] = useState<'info' | 'address' | 'payment' | null>(null);
   const [tempOrderId, setTempOrderId] = useState('');
   const [trxId, setTrxId] = useState('');
   const [selectedShippingId, setSelectedShippingId] = useState<string | null>(null);
   const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null);
 
-  // States for account sub-views
   const [isAddingAddress, setIsAddingAddress] = useState(false);
   const [editingAddress, setEditingAddress] = useState<UserAddress | null>(null);
   const [addressForm, setAddressForm] = useState<Partial<UserAddress>>({
@@ -131,6 +130,8 @@ const App: React.FC = () => {
   const [projectForm, setProjectForm] = useState<Partial<Project>>({
     name: '', description: '', price: 0, reference: '', category: SIDEBAR_CATEGORIES[0], inStock: true, rating: 5, reviewCount: 0, image: '', video: '', specs: []
   });
+
+  const [viewingItemsOrder, setViewingItemsOrder] = useState<Order | null>(null);
 
   const [verifiedUsers, setVerifiedUsers] = useState<UserData[]>([
     {
@@ -184,7 +185,6 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsSending(true);
     
-    // Artificial delay for feel
     setTimeout(() => {
       if (authMode === 'signin') {
         const user = verifiedUsers.find(u => u.email === email && u.password === password);
@@ -296,6 +296,23 @@ const App: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const handleLocalVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 50 * 1024 * 1024) {
+      addNotification("File too large. Max 50MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProjectForm(prev => ({ ...prev, video: reader.result as string }));
+      addNotification("Demo video attached successfully.");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const startCheckout = () => {
     if (!isLoggedIn) {
       setShowAuthModal(true);
@@ -322,7 +339,10 @@ const App: React.FC = () => {
       status: 'Confirmed',
       trxId: trxId.trim(),
       shippingAddress: shippingAddr,
-      billingAddress: billingAddr
+      billingAddress: billingAddr,
+      userEmail: currentUser.email,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone
     };
 
     const updatedUser = { ...currentUser, orders: [newOrder, ...currentUser.orders] };
@@ -336,6 +356,21 @@ const App: React.FC = () => {
     addNotification("Purchase successful! Deployment confirmed.");
     setCurrentTab(NavigationTab.ACCOUNT);
     setAccountSubView('orders');
+  };
+
+  const updateOrderStatus = (userEmail: string, orderId: string, newStatus: Order['status']) => {
+    setVerifiedUsers(prev => prev.map(user => {
+      if (user.email === userEmail) {
+        const updatedOrders = user.orders.map(order => 
+          order.id === orderId ? { ...order, status: newStatus } : order
+        );
+        const updatedUser = { ...user, orders: updatedOrders };
+        if (currentUser?.email === userEmail) setCurrentUser(updatedUser);
+        return updatedUser;
+      }
+      return user;
+    }));
+    addNotification(`Order status updated to ${newStatus}`);
   };
 
   const renderInformation = () => (
@@ -580,30 +615,59 @@ const App: React.FC = () => {
                     />
                   </label>
                 </div>
-                <p className="mt-1 text-[8px] font-bold text-slate-400 uppercase tracking-widest italic">Or upload from device</p>
+                {projectForm.image && (
+                  <div className="mt-4 p-2 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-4">
+                    <img src={projectForm.image} className="w-12 h-12 object-contain rounded-lg bg-white border border-slate-200" alt="Preview" />
+                    <span className="text-[9px] font-black uppercase text-slate-400 truncate flex-1">Image Loaded</span>
+                    <button type="button" onClick={() => setProjectForm({...projectForm, image: ''})} className="text-red-500 hover:text-red-700 p-2">✕</button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Project Demo Video URL</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="https://youtube.com/embed/.. or mp4 link"
+                    value={projectForm.video || ''} 
+                    onChange={e => setProjectForm({...projectForm, video: e.target.value})} 
+                    className="flex-1 px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" 
+                  />
+                  <label className="bg-[#FFB800] text-black p-4 rounded-xl cursor-pointer hover:brightness-110 transition-colors flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <input 
+                      type="file" 
+                      accept="video/*" 
+                      className="hidden" 
+                      onChange={handleLocalVideoUpload}
+                    />
+                  </label>
+                </div>
+                {projectForm.video && (
+                  <div className="mt-4 p-4 bg-slate-900 rounded-2xl border border-slate-800 flex flex-col gap-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase text-white tracking-widest flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        Demo Preview Active
+                      </span>
+                      <button type="button" onClick={() => setProjectForm({...projectForm, video: ''})} className="text-red-400 hover:text-red-500 text-xs font-black uppercase underline">Remove Clip</button>
+                    </div>
+                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-black flex items-center justify-center">
+                      <video src={projectForm.video} controls className="w-full h-full object-contain" autoPlay muted loop />
+                    </div>
+                  </div>
+                )}
+                <p className="mt-1 text-[8px] font-bold text-slate-400 uppercase tracking-widest italic">Supports direct links or device upload (Max 50MB suggested)</p>
               </div>
 
               <div className="flex items-center gap-8 py-2">
                 <div className="flex items-center gap-3">
-                  <input 
-                    type="radio" 
-                    id="inStock" 
-                    name="stockStatus"
-                    checked={projectForm.inStock === true} 
-                    onChange={() => setProjectForm({...projectForm, inStock: true})} 
-                    className="w-5 h-5 accent-[#FFB800]" 
-                  />
+                  <input type="radio" id="inStock" name="stockStatus" checked={projectForm.inStock === true} onChange={() => setProjectForm({...projectForm, inStock: true})} className="w-5 h-5 accent-[#FFB800]" />
                   <label htmlFor="inStock" className="text-[10px] font-black text-slate-900 uppercase tracking-widest cursor-pointer">In Stock</label>
                 </div>
                 <div className="flex items-center gap-3">
-                  <input 
-                    type="radio" 
-                    id="outOfStock" 
-                    name="stockStatus"
-                    checked={projectForm.inStock === false} 
-                    onChange={() => setProjectForm({...projectForm, inStock: false})} 
-                    className="w-5 h-5 accent-red-500" 
-                  />
+                  <input type="radio" id="outOfStock" name="stockStatus" checked={projectForm.inStock === false} onChange={() => setProjectForm({...projectForm, inStock: false})} className="w-5 h-5 accent-red-500" />
                   <label htmlFor="outOfStock" className="text-[10px] font-black text-slate-900 uppercase tracking-widest cursor-pointer">Out of Stock</label>
                 </div>
               </div>
@@ -619,7 +683,14 @@ const App: React.FC = () => {
       <div className="grid grid-cols-1 gap-4 mt-10">
         {inventory.map(p => (
           <div key={p.id} className="flex items-center gap-6 p-6 bg-slate-50/50 rounded-3xl border border-slate-100 hover:border-[#FFB800] transition-colors group">
-            <img src={p.image} alt={p.name} className="w-16 h-16 object-contain mix-blend-multiply group-hover:scale-110 transition-transform" />
+            <div className="relative">
+              <img src={p.image} alt={p.name} className="w-16 h-16 object-contain mix-blend-multiply group-hover:scale-110 transition-transform" />
+              {p.video && (
+                <div className="absolute -bottom-1 -right-1 bg-black text-white p-1 rounded-md">
+                   <svg className="w-3 h-3 text-[#FFB800]" fill="currentColor" viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
+                </div>
+              )}
+            </div>
             <div className="flex-1">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{p.reference} • {p.category}</p>
               <h4 className="text-sm font-black text-slate-900 uppercase">{p.name}</h4>
@@ -627,11 +698,7 @@ const App: React.FC = () => {
             </div>
             <div className="flex gap-3">
               <button 
-                onClick={() => { 
-                  setEditingProject(p); 
-                  setProjectForm({...p}); 
-                  setIsAddingProject(true); 
-                }} 
+                onClick={() => { setEditingProject(p); setProjectForm({...p}); setIsAddingProject(true); }} 
                 className="px-5 py-2.5 bg-white border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-[#FFB800] transition-colors"
               >
                 Edit
@@ -653,6 +720,149 @@ const App: React.FC = () => {
       </div>
     </div>
   );
+
+  const renderConfirmedOrdersManager = () => {
+    // Flatten all orders from all users
+    const allOrders = verifiedUsers.reduce((acc, user) => {
+      const userOrders = user.orders.map(o => ({ 
+        ...o, 
+        userEmail: user.email, 
+        userName: `${user.firstName} ${user.lastName}`,
+        userPhone: user.phone
+      }));
+      return [...acc, ...userOrders];
+    }, [] as Order[]);
+
+    return (
+      <div className="bg-white border border-slate-100 p-10 rounded-[32px] shadow-sm max-w-[98%] mx-auto overflow-hidden">
+        <div className="flex items-center gap-4 mb-10">
+          <button onClick={() => setAccountSubView('menu')} className="text-slate-400 hover:text-black">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <h1 className="text-2xl font-black text-slate-900 uppercase tracking-widest">Global Confirmed Orders</h1>
+        </div>
+        
+        {/* Product List Popup */}
+        {viewingItemsOrder && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+             <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[80vh]">
+               <div className="bg-slate-50 p-8 flex justify-between items-center border-b border-slate-100 shrink-0">
+                 <div>
+                   <h3 className="text-lg font-black text-slate-900 uppercase tracking-widest">User Product List</h3>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Order Ref: {viewingItemsOrder.id}</p>
+                 </div>
+                 <button onClick={() => setViewingItemsOrder(null)} className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-full text-slate-400 hover:text-black transition-colors shadow-sm">✕</button>
+               </div>
+               <div className="p-8 overflow-y-auto hide-scrollbar">
+                 <div className="space-y-4">
+                    {viewingItemsOrder.items.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-6 p-5 bg-slate-50 rounded-[28px] border border-slate-100 hover:border-[#FFB800] transition-colors group">
+                        <img src={item.image} className="w-20 h-20 object-contain mix-blend-multiply bg-white rounded-2xl p-2 border border-slate-100 group-hover:scale-105 transition-transform" />
+                        <div className="flex-1">
+                          <h4 className="text-sm font-black text-slate-900 uppercase">{item.name}</h4>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{item.category} • {item.reference}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-black text-slate-300 uppercase tracking-widest mb-1">Quantity</p>
+                          <p className="text-lg font-black text-slate-900">x{item.quantity}</p>
+                          <p className="text-[10px] font-black text-green-600 uppercase mt-1">BDT {(item.price * item.quantity).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    ))}
+                 </div>
+               </div>
+               <div className="p-10 border-t border-slate-100 bg-white flex justify-between items-center shrink-0">
+                  <div>
+                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Confirmed Paid Value</span>
+                    <span className="text-2xl font-black text-slate-900 tracking-tight">BDT {viewingItemsOrder.total.toLocaleString()}</span>
+                  </div>
+                  <button onClick={() => setViewingItemsOrder(null)} className="bg-black text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black transition-all">Close Dashboard</button>
+               </div>
+             </div>
+          </div>
+        )}
+
+        <div className="overflow-x-auto rounded-[32px] border border-slate-100">
+          <table className="w-full text-left border-collapse bg-white">
+            <thead>
+              <tr className="bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest">
+                <th className="px-6 py-5 border-b border-slate-800">Order ID</th>
+                <th className="px-6 py-5 border-b border-slate-800">Payment Price</th>
+                <th className="px-6 py-5 border-b border-slate-800">bKash Paid</th>
+                <th className="px-6 py-5 border-b border-slate-800">TrxID</th>
+                <th className="px-6 py-5 border-b border-slate-800">Reference</th>
+                <th className="px-6 py-5 border-b border-slate-800">Customer Number</th>
+                <th className="px-6 py-5 border-b border-slate-800">Customer Name</th>
+                <th className="px-6 py-5 border-b border-slate-800">Product List</th>
+                <th className="px-6 py-5 border-b border-slate-800">Status</th>
+                <th className="px-6 py-5 border-b border-slate-800">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-24 text-center">
+                    <div className="flex flex-col items-center gap-4">
+                      <svg className="w-12 h-12 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      <p className="text-xs font-black text-slate-300 uppercase tracking-widest">No order logs available in centralized database</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                allOrders.map(order => (
+                  <tr key={order.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-slate-900">{order.id}</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-600">BDT {order.total.toLocaleString()}</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-green-600 italic">BDT {order.total.toLocaleString()} (Verified)</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-pink-600 tracking-wider font-mono">{order.trxId}</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-400">{order.id}</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-slate-700">{order.userPhone || 'NOT PROVIDED'}</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-800 uppercase">{order.userName}</td>
+                    <td className="px-6 py-5 border-b border-slate-100">
+                      <button 
+                        onClick={() => setViewingItemsOrder(order)}
+                        className="px-4 py-2 bg-slate-100 text-slate-900 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#FFB800] transition-all flex items-center gap-2 group/tab"
+                      >
+                        <svg className="w-3 h-3 opacity-40 group-hover/tab:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h7" strokeWidth="3" strokeLinecap="round"/></svg>
+                        View Items
+                      </button>
+                    </td>
+                    <td className="px-6 py-5 border-b border-slate-100">
+                      <div className={`inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                        order.status === 'Confirmed' ? 'bg-blue-100 text-blue-600' :
+                        order.status === 'Shipped' ? 'bg-orange-100 text-orange-600' :
+                        'bg-green-100 text-green-600'
+                      }`}>
+                        {order.status}
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 border-b border-slate-100">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => updateOrderStatus(order.userEmail!, order.id, 'Shipped')}
+                          title="Set as Shipped"
+                          className="p-2.5 bg-white border border-slate-200 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all shadow-sm active:scale-95"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                        <button 
+                          onClick={() => updateOrderStatus(order.userEmail!, order.id, 'Delivered')}
+                          title="Set as Delivered"
+                          className="p-2.5 bg-white border border-slate-200 text-green-600 rounded-xl hover:bg-green-600 hover:text-white transition-all shadow-sm active:scale-95"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   const renderCheckoutFlow = () => {
     if (!checkoutStep) return null;
@@ -719,7 +929,6 @@ const App: React.FC = () => {
                       <span className="block text-[9px] font-black uppercase text-slate-300 mb-2">{addr.type} Target</span>
                       <p className="text-xs font-black text-slate-900 uppercase">{addr.street}</p>
                       <p className="text-[10px] font-bold text-slate-400 uppercase">{addr.city}, {addr.zip}</p>
-                      {selectedShippingId === addr.id && <div className="absolute top-4 right-4 text-[#FFB800]"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg></div>}
                     </button>
                   ))}
                 </div>
@@ -740,7 +949,6 @@ const App: React.FC = () => {
                       <span className="block text-[9px] font-black uppercase text-slate-300 mb-2">{addr.type} Target</span>
                       <p className="text-xs font-black text-slate-900 uppercase">{addr.street}</p>
                       <p className="text-[10px] font-bold text-slate-400 uppercase">{addr.city}, {addr.zip}</p>
-                      {selectedBillingId === addr.id && <div className="absolute top-4 right-4 text-[#FFB800]"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg></div>}
                     </button>
                   ))}
                 </div>
@@ -770,7 +978,7 @@ const App: React.FC = () => {
           <div className="bg-white p-12 rounded-[40px] shadow-2xl animate-in fade-in slide-in-from-bottom-4 flex flex-col items-center">
             <div className="bg-[#D12053] text-white px-10 py-4 rounded-3xl font-black text-xl mb-12 shadow-xl shadow-pink-100">bKash Portal</div>
             
-            <div className="w-full max-w-sm space-y-8">
+            <div className="w-full max-sm space-y-8">
               <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-100 space-y-6">
                 <div>
                   <span className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">bKash Account (Personal)</span>
@@ -806,11 +1014,10 @@ const App: React.FC = () => {
               <div className="pt-6 space-y-4">
                 <button 
                   onClick={handleFinalizeOrder}
-                  className="w-full bg-[#D12053] text-white py-6 rounded-3xl font-black text-xs uppercase tracking-widest hover:brightness-110 shadow-2xl shadow-pink-200 transition-all"
+                  className="w-full bg-[#D12053] text-white py-6 rounded-3xl font-black text-xs uppercase tracking-widest hover:brightness-110 shadow-2xl transition-all"
                 >
                   Finalize Deployment
                 </button>
-                <button onClick={() => setCheckoutStep('address')} className="w-full text-[10px] font-black uppercase text-slate-400 hover:text-black transition-colors">Return to Destination</button>
               </div>
             </div>
           </div>
@@ -835,7 +1042,7 @@ const App: React.FC = () => {
                 <div className="space-y-4">
                   <h2 className="text-xl font-black text-center uppercase mb-6 tracking-widest text-slate-900">Access Portal</h2>
                   <button onClick={() => { setAuthPersona('admin'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-900 text-white rounded-[24px] hover:bg-black transition-colors group"><AdminIconSmall /> <span className="text-xs font-black uppercase tracking-widest group-hover:text-[#FFB800]">Administrator</span></button>
-                  <button onClick={() => { setAuthPersona('user'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-50 rounded-[24px] hover:bg-slate-100 transition-colors group"><UserIconSmall /> <span className="text-xs font-black uppercase tracking-widest text-slate-600 group-hover:text-black">User Account</span></button>
+                  <button onClick={() => { setAuthPersona('user'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-100 rounded-[24px] hover:bg-slate-200 transition-colors group"><UserIconSmall /> <span className="text-xs font-black uppercase tracking-widest text-slate-600 group-hover:text-black">User Account</span></button>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -847,13 +1054,13 @@ const App: React.FC = () => {
                     </div>
                   )}
                   <form onSubmit={handleAuthSubmit} className="space-y-4">
-                    {authMode === 'signup' && (
+                    {authPersona === 'user' && authMode === 'signup' && (
                       <div className="grid grid-cols-2 gap-3">
                         <input required type="text" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First Name" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
                         <input required type="text" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last Name" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
                       </div>
                     )}
-                    {authMode === 'signup' && <input required type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone Number" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />}
+                    {authPersona === 'user' && authMode === 'signup' && <input required type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone Number" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />}
                     <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] transition-all" />
                     <input required type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] transition-all" />
                     <button type="submit" disabled={isSending} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all shadow-lg mt-4">{isSending ? 'Authenticating...' : 'Authorize'}</button>
@@ -916,9 +1123,39 @@ const App: React.FC = () => {
                 <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.54 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.784.57-1.838-.197-1.539-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" strokeWidth="2"/></svg>} label="MY REVIEWS" onClick={() => setAccountSubView('reviews')} />
                 <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" strokeWidth="2.5"/><path d="M12 9v6m-3-3h6" strokeWidth="2.5"/></svg>} label="SAVED CARTS" onClick={() => setAccountSubView('saved-carts')} />
                 <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" strokeWidth="2.5"/></svg>} label="OUT OF STOCK SUBSCRIPTIONS" />
-                {currentUser?.role === 'admin' && <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg>} label="LAB INVENTORY" onClick={() => setAccountSubView('inventory')} />}
+                {currentUser?.role === 'admin' && (
+                  <>
+                    <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg>} label="LAB INVENTORY" onClick={() => setAccountSubView('inventory')} />
+                    <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" strokeWidth="2.5"/></svg>} label="CONFIRMED ORDER STATUS" onClick={() => setAccountSubView('confirmed-orders')} />
+                  </>
+                )}
               </div>
-            ) : accountSubView === 'information' ? renderInformation() : accountSubView === 'addresses' ? renderAddressesManager() : accountSubView === 'inventory' ? renderInventoryManager() : null}
+            ) : accountSubView === 'information' ? renderInformation() : accountSubView === 'addresses' ? renderAddressesManager() : accountSubView === 'inventory' ? renderInventoryManager() : accountSubView === 'confirmed-orders' ? renderConfirmedOrdersManager() : accountSubView === 'orders' ? (
+              <div className="max-w-4xl mx-auto py-12 px-6">
+                <div className="flex items-center gap-4 mb-10">
+                  <button onClick={() => setAccountSubView('menu')} className="text-slate-400 hover:text-black">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                  <h1 className="text-2xl font-black text-slate-900 uppercase tracking-widest">Your Orders</h1>
+                </div>
+                {!currentUser?.orders || currentUser.orders.length === 0 ? <p className="text-center text-slate-300 font-black uppercase py-20">No orders found</p> : (
+                  <div className="space-y-6">
+                    {currentUser.orders.map(o => (
+                      <div key={o.id} className="bg-white border border-slate-100 rounded-3xl p-8 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex-1">
+                          <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">ID: {o.id}</span>
+                          <p className="text-sm font-black text-slate-900">{o.date}</p>
+                          <p className="text-xs font-bold text-slate-500 mt-2 uppercase">Status: {o.status}</p>
+                        </div>
+                        <div className="text-right">
+                           <span className="text-lg font-black text-slate-900">BDT {o.total.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
             <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentTab(NavigationTab.HOME); }} className="bg-[#4caf50] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Sign Out</button></div>
           </div>
         ) : (
