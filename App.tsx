@@ -94,7 +94,28 @@ const AccountCard: React.FC<{ icon: React.ReactNode; label: string; onClick?: ()
 );
 
 const App: React.FC = () => {
-  const [inventory, setInventory] = useState<Project[]>(PROJECTS);
+  // Persistence Initialization
+  const [inventory, setInventory] = useState<Project[]>(() => {
+    const saved = localStorage.getItem('cp_inventory');
+    return saved ? JSON.parse(saved) : PROJECTS;
+  });
+
+  const [verifiedUsers, setVerifiedUsers] = useState<UserData[]>(() => {
+    const saved = localStorage.getItem('cp_users');
+    if (saved) return JSON.parse(saved);
+    return [{
+      firstName: ADMIN_CONFIG.firstName,
+      lastName: ADMIN_CONFIG.lastName,
+      email: ADMIN_CONFIG.email,
+      password: ADMIN_CONFIG.password,
+      role: 'admin',
+      phone: 'SYSTEM',
+      addresses: [],
+      orders: [],
+      reviews: []
+    }];
+  });
+
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserData | null>(null);
@@ -132,28 +153,22 @@ const App: React.FC = () => {
   });
 
   const [viewingItemsOrder, setViewingItemsOrder] = useState<Order | null>(null);
+  const [notifications, setNotifications] = useState<{id: number, text: string}[]>([]);
 
-  const [verifiedUsers, setVerifiedUsers] = useState<UserData[]>([
-    {
-      firstName: ADMIN_CONFIG.firstName,
-      lastName: ADMIN_CONFIG.lastName,
-      email: ADMIN_CONFIG.email,
-      password: ADMIN_CONFIG.password,
-      role: 'admin',
-      phone: 'SYSTEM',
-      addresses: [],
-      orders: [],
-      reviews: []
-    }
-  ]);
-  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
 
-  const [notifications, setNotifications] = useState<{id: number, text: string}[]>([]);
+  // Sync to Storage
+  useEffect(() => {
+    localStorage.setItem('cp_inventory', JSON.stringify(inventory));
+  }, [inventory]);
+
+  useEffect(() => {
+    localStorage.setItem('cp_users', JSON.stringify(verifiedUsers));
+  }, [verifiedUsers]);
 
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -186,8 +201,9 @@ const App: React.FC = () => {
     setIsSending(true);
     
     setTimeout(() => {
+      const normalizedEmail = email.toLowerCase().trim();
       if (authMode === 'signin') {
-        const user = verifiedUsers.find(u => u.email === email && u.password === password);
+        const user = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail && u.password === password);
         if (user) {
           setIsLoggedIn(true);
           setCurrentUser(user);
@@ -198,14 +214,14 @@ const App: React.FC = () => {
           addNotification("Invalid credentials.");
         }
       } else {
-        const exists = verifiedUsers.find(u => u.email === email);
+        const exists = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
         if (exists) {
           addNotification("Email already registered.");
         } else {
           const newUser: UserData = { 
             firstName, 
             lastName, 
-            email, 
+            email: normalizedEmail, 
             phone, 
             password, 
             role: 'user', 
@@ -238,7 +254,7 @@ const App: React.FC = () => {
     }
     const updatedUser = { ...currentUser, addresses: updatedAddresses };
     setCurrentUser(updatedUser);
-    setVerifiedUsers(prev => prev.map(u => u.email === updatedUser.email ? updatedUser : u));
+    setVerifiedUsers(prev => prev.map(u => u.email.toLowerCase() === updatedUser.email.toLowerCase() ? updatedUser : u));
     setIsAddingAddress(false);
     setEditingAddress(null);
   };
@@ -333,8 +349,8 @@ const App: React.FC = () => {
 
     const newOrder: Order = {
       id: tempOrderId,
-      date: new Date().toLocaleDateString(),
-      items: [...cart],
+      date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
+      items: JSON.parse(JSON.stringify(cart)), // Deep copy cart
       total: cartTotal,
       status: 'Confirmed',
       trxId: trxId.trim(),
@@ -345,32 +361,39 @@ const App: React.FC = () => {
       userPhone: currentUser.phone
     };
 
-    const updatedUser = { ...currentUser, orders: [newOrder, ...currentUser.orders] };
+    const updatedUser = { 
+      ...currentUser, 
+      orders: [newOrder, ...(currentUser.orders || [])] 
+    };
+    
+    // Update global and current state
     setCurrentUser(updatedUser);
-    setVerifiedUsers(prev => prev.map(u => u.email === updatedUser.email ? updatedUser : u));
+    setVerifiedUsers(prev => prev.map(u => 
+      u.email.toLowerCase() === updatedUser.email.toLowerCase() ? updatedUser : u
+    ));
     
     setCart([]);
     setCheckoutStep(null);
     setTrxId('');
     setTempOrderId('');
-    addNotification("Purchase successful! Deployment confirmed.");
+    addNotification("Purchase successful! Database updated.");
     setCurrentTab(NavigationTab.ACCOUNT);
     setAccountSubView('orders');
   };
 
   const updateOrderStatus = (userEmail: string, orderId: string, newStatus: Order['status']) => {
     setVerifiedUsers(prev => prev.map(user => {
-      if (user.email === userEmail) {
+      if (user.email.toLowerCase() === userEmail.toLowerCase()) {
         const updatedOrders = user.orders.map(order => 
           order.id === orderId ? { ...order, status: newStatus } : order
         );
         const updatedUser = { ...user, orders: updatedOrders };
-        if (currentUser?.email === userEmail) setCurrentUser(updatedUser);
+        if (currentUser?.email.toLowerCase() === userEmail.toLowerCase()) setCurrentUser(updatedUser);
         return updatedUser;
       }
       return user;
     }));
-    addNotification(`Order status updated to ${newStatus}`);
+    addNotification(`Status changed to ${newStatus}`);
   };
 
   const renderInformation = () => (
@@ -499,7 +522,7 @@ const App: React.FC = () => {
                     const updatedAddresses = currentUser.addresses.filter(a => a.id !== addr.id);
                     const updatedUser = { ...currentUser, addresses: updatedAddresses };
                     setCurrentUser(updatedUser);
-                    setVerifiedUsers(prev => prev.map(u => u.email === updatedUser.email ? updatedUser : u));
+                    setVerifiedUsers(prev => prev.map(u => u.email.toLowerCase() === updatedUser.email.toLowerCase() ? updatedUser : u));
                     addNotification("Address removed.");
                   }
                 }} 
@@ -722,9 +745,9 @@ const App: React.FC = () => {
   );
 
   const renderConfirmedOrdersManager = () => {
-    // Flatten all orders from all users
+    // Dynamically aggregate ALL orders from the synchronized user list
     const allOrders = verifiedUsers.reduce((acc, user) => {
-      const userOrders = user.orders.map(o => ({ 
+      const userOrders = (user.orders || []).map(o => ({ 
         ...o, 
         userEmail: user.email, 
         userName: `${user.firstName} ${user.lastName}`,
@@ -786,16 +809,16 @@ const App: React.FC = () => {
           <table className="w-full text-left border-collapse bg-white">
             <thead>
               <tr className="bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest">
-                <th className="px-6 py-5 border-b border-slate-800">Order ID</th>
-                <th className="px-6 py-5 border-b border-slate-800">Payment Price</th>
-                <th className="px-6 py-5 border-b border-slate-800">bKash Paid</th>
-                <th className="px-6 py-5 border-b border-slate-800">TrxID</th>
-                <th className="px-6 py-5 border-b border-slate-800">Reference</th>
-                <th className="px-6 py-5 border-b border-slate-800">Customer Number</th>
-                <th className="px-6 py-5 border-b border-slate-800">Customer Name</th>
-                <th className="px-6 py-5 border-b border-slate-800">Product List</th>
-                <th className="px-6 py-5 border-b border-slate-800">Status</th>
-                <th className="px-6 py-5 border-b border-slate-800">Actions</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Order ID</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Payment Price</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">bKash Paid</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">TrxID</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Reference</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Customer Number</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Customer Name</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Product List</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Status</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -813,10 +836,10 @@ const App: React.FC = () => {
                   <tr key={order.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-slate-900">{order.id}</td>
                     <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-600">BDT {order.total.toLocaleString()}</td>
-                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-green-600 italic">BDT {order.total.toLocaleString()} (Verified)</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-green-600 italic">BDT {order.total.toLocaleString()} (Paid)</td>
                     <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-pink-600 tracking-wider font-mono">{order.trxId}</td>
                     <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-400">{order.id}</td>
-                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-slate-700">{order.userPhone || 'NOT PROVIDED'}</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-slate-700">{order.userPhone || 'N/A'}</td>
                     <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-800 uppercase">{order.userName}</td>
                     <td className="px-6 py-5 border-b border-slate-100">
                       <button 
@@ -1138,7 +1161,7 @@ const App: React.FC = () => {
                   </button>
                   <h1 className="text-2xl font-black text-slate-900 uppercase tracking-widest">Your Orders</h1>
                 </div>
-                {!currentUser?.orders || currentUser.orders.length === 0 ? <p className="text-center text-slate-300 font-black uppercase py-20">No orders found</p> : (
+                {(!currentUser?.orders || currentUser.orders.length === 0) ? <p className="text-center text-slate-300 font-black uppercase py-20">No orders found</p> : (
                   <div className="space-y-6">
                     {currentUser.orders.map(o => (
                       <div key={o.id} className="bg-white border border-slate-100 rounded-3xl p-8 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -1156,7 +1179,7 @@ const App: React.FC = () => {
                 )}
               </div>
             ) : null}
-            <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentTab(NavigationTab.HOME); }} className="bg-[#4caf50] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Sign Out</button></div>
+            <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); setCurrentTab(NavigationTab.HOME); }} className="bg-[#4caf50] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Sign Out</button></div>
           </div>
         ) : (
           <div className="max-w-4xl mx-auto py-20 px-8 text-center">
