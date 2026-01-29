@@ -816,6 +816,7 @@ const App: React.FC = () => {
                 <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Reference</th>
                 <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Customer Number</th>
                 <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Customer Name</th>
+                <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Delivery Address</th>
                 <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Product List</th>
                 <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Status</th>
                 <th className="px-6 py-5 border-b border-slate-800 whitespace-nowrap">Actions</th>
@@ -824,7 +825,7 @@ const App: React.FC = () => {
             <tbody>
               {allOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-24 text-center">
+                  <td colSpan={11} className="py-24 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <svg className="w-12 h-12 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       <p className="text-xs font-black text-slate-300 uppercase tracking-widest">No order logs available in centralized database</p>
@@ -841,6 +842,17 @@ const App: React.FC = () => {
                     <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-400">{order.id}</td>
                     <td className="px-6 py-5 border-b border-slate-100 text-xs font-black text-slate-700">{order.userPhone || 'N/A'}</td>
                     <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-800 uppercase">{order.userName}</td>
+                    <td className="px-6 py-5 border-b border-slate-100 text-xs font-bold text-slate-600">
+                      {order.shippingAddress ? (
+                        <div className="max-w-[220px] leading-relaxed lowercase">
+                          <p className="font-black text-slate-900 uppercase truncate">{order.shippingAddress.street}</p>
+                          <p className="truncate">{order.shippingAddress.city}, {order.shippingAddress.zip}</p>
+                          <p className="text-[9px] opacity-60 uppercase">{order.shippingAddress.country}</p>
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 italic">Not Selected</span>
+                      )}
+                    </td>
                     <td className="px-6 py-5 border-b border-slate-100">
                       <button 
                         onClick={() => setViewingItemsOrder(order)}
@@ -1188,7 +1200,7 @@ const App: React.FC = () => {
               <div className="space-y-4">
                 {cart.map(item => <div key={item.id} className="bg-white p-6 rounded-3xl shadow-sm flex items-center justify-between"><div className="flex items-center gap-6"><img src={item.image} className="w-16 h-16 object-contain"/><span className="font-black text-xs uppercase">{item.name} x {item.quantity}</span></div><span className="font-black">BDT {(item.price * item.quantity).toLocaleString()}</span></div>)}
                 <div className="pt-10 border-t border-slate-100 flex flex-col items-center gap-6">
-                  <div className="flex justify-between w-full max-w-sm"><span className="text-lg font-black uppercase text-slate-400">Total</span><span className="text-2xl font-black">BDT {cartTotal.toLocaleString()}</span></div>
+                  <div className="flex justify-between w-full max-sm"><span className="text-lg font-black uppercase text-slate-400">Total</span><span className="text-2xl font-black">BDT {cartTotal.toLocaleString()}</span></div>
                   <button onClick={startCheckout} className="bg-black text-white px-20 py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black transition-all shadow-xl">Confirm Deployment</button>
                 </div>
               </div>
@@ -1200,6 +1212,5 @@ const App: React.FC = () => {
     </div>
   );
 };
-
 
 export default App;
