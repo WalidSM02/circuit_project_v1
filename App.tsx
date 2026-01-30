@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Project, CartItem, NavigationTab } from './types';
 import { PROJECTS, SIDEBAR_CATEGORIES, LOGO_SVG } from './constants';
 import { HeroCarousel } from './components/HeroCarousel';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { ProjectCard } from './components/ProjectCard';
 
 // ==========================================
@@ -1772,6 +1773,7 @@ const App: React.FC = () => {
         )
       )}
       <footer className="bg-slate-900 text-white py-20 px-10 mt-auto"><div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12"><div>{LOGO_SVG}<p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-6">© 2025 Circuit Projects Lab. Root Access Authorized.</p></div></div></footer>
+      <SpeedInsights />
     </div>
   );
 };
