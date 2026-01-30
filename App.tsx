@@ -49,6 +49,7 @@ interface UserReview {
   rating: number;
   comment: string;
   date: string;
+  userName?: string;
 }
 
 interface Order {
@@ -131,6 +132,7 @@ const App: React.FC = () => {
   
   const [currentTab, setCurrentTab] = useState<NavigationTab>(NavigationTab.HOME);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [activeDetailTab, setActiveDetailTab] = useState(0); // 0: Description, 1: Product Details, 2: Comments
   const [detailQuantity, setDetailQuantity] = useState(1);
   const [accountSubView, setAccountSubView] = useState<'menu' | 'information' | 'addresses' | 'orders' | 'inventory' | 'reviews' | 'saved-carts' | 'confirmed-orders'>('menu');
   
@@ -148,11 +150,34 @@ const App: React.FC = () => {
   const [isAddressTypeDropdownOpen, setIsAddressTypeDropdownOpen] = useState(false);
   const addressDropdownRef = useRef<HTMLDivElement>(null);
 
+  // New States for "Add to Cart" Options Modal
+  const [showCartOptionsModal, setShowCartOptionsModal] = useState(false);
+  const [optionIEEE, setOptionIEEE] = useState(false);
+  const [optionPPTX, setOptionPPTX] = useState(false);
+  const [pendingAddition, setPendingAddition] = useState<{proj: Project, qty: number} | null>(null);
+
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectForm, setProjectForm] = useState<Partial<Project>>({
-    name: '', description: '', price: 0, reference: '', category: SIDEBAR_CATEGORIES[0], inStock: true, rating: 5, reviewCount: 0, image: '', video: '', specs: [],
-    priceAdjustmentType: 'none', priceAdjustmentAmount: 0
+    name: '', 
+    description: '', 
+    detailedDescription: '',
+    price: 0, 
+    reference: '', 
+    category: SIDEBAR_CATEGORIES[0], 
+    inStock: true, 
+    rating: 5, 
+    reviewCount: 0, 
+    image: '', 
+    video: '', 
+    specs: [],
+    features: [],
+    packageIncludes: [],
+    detailedSpecs: {},
+    purchasedRecently: 0,
+    addedToCartRecently: 0,
+    priceAdjustmentType: 'none', 
+    priceAdjustmentAmount: 0
   });
 
   const [viewingItemsOrder, setViewingItemsOrder] = useState<Order | null>(null);
@@ -174,7 +199,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const target = new Date();
-    target.setHours(target.getHours() + 24); // Set to 24 hours from now for demonstration
+    target.setHours(target.getHours() + 24); 
 
     const timer = setInterval(() => {
       const now = new Date().getTime();
@@ -316,7 +341,6 @@ const App: React.FC = () => {
   const handleSaveProject = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Logic to calculate originalPrice and discount based on current price and adjustment
     const sellingPrice = projectForm.price || 0;
     const adjustmentType = projectForm.priceAdjustmentType || 'none';
     const adjustmentAmount = projectForm.priceAdjustmentAmount || 0;
@@ -332,6 +356,14 @@ const App: React.FC = () => {
       finalDiscount = `+ BDT ${adjustmentAmount.toLocaleString()}`;
     }
 
+    const processedFeatures = Array.isArray(projectForm.features) 
+      ? projectForm.features 
+      : (projectForm.features as any)?.split('\n').filter((f: string) => f.trim() !== '') || [];
+
+    const processedPackage = Array.isArray(projectForm.packageIncludes) 
+      ? projectForm.packageIncludes 
+      : (projectForm.packageIncludes as any)?.split('\n').filter((f: string) => f.trim() !== '') || [];
+
     if (editingProject) {
       setInventory(prev => prev.map(p => p.id === editingProject.id ? { 
         ...p, 
@@ -340,27 +372,37 @@ const App: React.FC = () => {
         originalPrice: finalOriginalPrice,
         discount: finalDiscount,
         rating: Number(projectForm.rating ?? 5),
-        reviewCount: Number(projectForm.reviewCount ?? 0)
+        reviewCount: Number(projectForm.reviewCount ?? 0),
+        purchasedRecently: Number(projectForm.purchasedRecently ?? 0),
+        addedToCartRecently: Number(projectForm.addedToCartRecently ?? 0),
+        features: processedFeatures,
+        packageIncludes: processedPackage
       } as Project : p));
       addNotification("Blueprint updated successfully.");
     } else {
       const newProject: Project = { 
         id: `proj-${Date.now()}`,
         name: projectForm.name || '',
-        description: projectForm.description || 'Project blueprint description not available.',
+        description: projectForm.description || '',
+        detailedDescription: projectForm.detailedDescription || '',
         price: sellingPrice,
         originalPrice: finalOriginalPrice,
         discount: finalDiscount,
         category: projectForm.category || SIDEBAR_CATEGORIES[0],
         image: projectForm.image || '',
         specs: projectForm.specs || [],
+        features: processedFeatures,
+        packageIncludes: processedPackage,
+        detailedSpecs: projectForm.detailedSpecs || {},
         reference: projectForm.reference || generateReference(projectForm.category || SIDEBAR_CATEGORIES[0]),
         rating: Number(projectForm.rating ?? 5),
         reviewCount: Number(projectForm.reviewCount ?? 0),
         inStock: projectForm.inStock ?? true,
         video: projectForm.video,
         priceAdjustmentType: adjustmentType,
-        priceAdjustmentAmount: adjustmentAmount
+        priceAdjustmentAmount: adjustmentAmount,
+        purchasedRecently: Number(projectForm.purchasedRecently ?? 0),
+        addedToCartRecently: Number(projectForm.addedToCartRecently ?? 0)
       };
       setInventory(prev => [newProject, ...prev]);
       addNotification("New blueprint added to lab inventory.");
@@ -419,7 +461,7 @@ const App: React.FC = () => {
     const newOrder: Order = {
       id: tempOrderId,
       date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
-      items: JSON.parse(JSON.stringify(cart)), // Deep copy cart
+      items: JSON.parse(JSON.stringify(cart)), 
       total: cartTotal,
       status: 'Confirmed',
       trxId: trxId.trim(),
@@ -435,7 +477,6 @@ const App: React.FC = () => {
       orders: [newOrder, ...(currentUser.orders || [])] 
     };
     
-    // Update global and current state
     setCurrentUser(updatedUser);
     setVerifiedUsers(prev => prev.map(u => 
       u.email.toLowerCase() === updatedUser.email.toLowerCase() ? updatedUser : u
@@ -465,26 +506,48 @@ const App: React.FC = () => {
     addNotification(`Status changed to ${newStatus}`);
   };
 
-  const addToCart = (proj: Project, qty: number = 1) => {
+  const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = false) => {
+    // If not forced from the modal, intercept and show the pop-up options
+    if (!forceComplete) {
+      setPendingAddition({ proj, qty });
+      setShowCartOptionsModal(true);
+      setOptionIEEE(false);
+      setOptionPPTX(false);
+      return;
+    }
+
     const existing = cart.find(x => x.id === proj.id);
+    // Note: We could attach the IEEE/PPTX options to the item here, but as per user request
+    // we are just showing the popup and the WhatsApp message logic.
     if (existing) {
       setCart(cart.map(x => x.id === proj.id ? { ...x, quantity: x.quantity + qty } : x));
     } else {
       setCart([...cart, { ...proj, quantity: qty }]);
     }
     addNotification(`${proj.name} added to cart.`);
+    setShowCartOptionsModal(false);
+    setPendingAddition(null);
+  };
+
+  const getProjectReviews = (projectId: string) => {
+    return verifiedUsers.reduce((acc, user) => {
+      const projectReviews = (user.reviews || [])
+        .filter(r => r.projectId === projectId)
+        .map(r => ({ ...r, userName: `${user.firstName} ${user.lastName}` }));
+      return [...acc, ...projectReviews];
+    }, [] as UserReview[]);
   };
 
   const renderProjectDetails = () => {
     if (!selectedProject) return null;
 
     const isReduced = selectedProject.priceAdjustmentType === 'reduced' || (selectedProject.originalPrice && selectedProject.price < selectedProject.originalPrice);
+    const reviews = getProjectReviews(selectedProject.id);
     
     return (
       <div className="max-w-7xl mx-auto px-8 py-12 animate-in fade-in slide-in-from-bottom-2">
-        {/* Breadcrumb / Back button */}
         <button 
-          onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedProject(null); setDetailQuantity(1); }}
+          onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedProject(null); setDetailQuantity(1); setActiveDetailTab(0); }}
           className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 hover:text-black mb-8 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -492,7 +555,6 @@ const App: React.FC = () => {
         </button>
 
         <div className="flex flex-col lg:flex-row gap-12 mb-20">
-          {/* Left Column: Gallery */}
           <div className="flex-1 space-y-6">
             <div className="bg-white border border-slate-100 rounded-3xl p-8 relative overflow-hidden flex items-center justify-center min-h-[400px]">
               {isReduced && (
@@ -502,7 +564,6 @@ const App: React.FC = () => {
               )}
               <img src={selectedProject.image} alt={selectedProject.name} className="max-h-[500px] object-contain mix-blend-multiply" />
             </div>
-            {/* Thumbnails placeholder */}
             <div className="flex gap-4">
                {[selectedProject.image, ...(selectedProject.thumbnails || [])].slice(0, 4).map((img, i) => (
                  <div key={i} className="w-24 h-24 border border-slate-200 rounded-xl p-2 cursor-pointer hover:border-[#FFB800] bg-white transition-all overflow-hidden flex items-center justify-center">
@@ -518,7 +579,6 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Info & Action */}
           <div className="flex-1 space-y-8">
             <div className="space-y-4">
               <h1 className="text-3xl font-black text-slate-900 uppercase leading-tight tracking-tight">{selectedProject.name}</h1>
@@ -537,7 +597,7 @@ const App: React.FC = () => {
                   </li>
                 ))}
               </ul>
-              <p className="text-sm text-slate-500 leading-relaxed max-w-xl">
+              <p className="text-sm text-slate-500 leading-relaxed max-w-xl line-clamp-3">
                 {selectedProject.description}
               </p>
             </div>
@@ -557,7 +617,6 @@ const App: React.FC = () => {
                 )}
               </div>
               
-              {/* Dynamic Countdown area */}
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex items-center justify-between mb-8">
                  <div className="flex flex-col">
                    <span className="text-[10px] font-black uppercase text-green-500 italic mb-2">Discount Ends In</span>
@@ -581,8 +640,8 @@ const App: React.FC = () => {
                    <div className="flex gap-1 text-[#FFB800] mb-1">
                      {[1,2,3,4,5].map(s => <svg key={s} className={`w-4 h-4 ${s <= selectedProject.rating ? 'fill-current' : 'text-slate-200'}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
                    </div>
-                   <span className="text-[10px] font-black uppercase text-slate-400">Read the review</span>
-                   <p className="text-[9px] font-bold text-slate-500 mt-1">Avg Rating: {selectedProject.rating}/5 • Reviews: {selectedProject.reviewCount}</p>
+                   <span onClick={() => setActiveDetailTab(2)} className="text-[10px] font-black uppercase text-slate-400 cursor-pointer hover:text-black underline">Read the review</span>
+                   <p className="text-[9px] font-bold text-slate-500 mt-1">Avg Rating: {selectedProject.rating}/5 • Reviews: {selectedProject.reviewCount || reviews.length}</p>
                  </div>
               </div>
 
@@ -612,20 +671,12 @@ const App: React.FC = () => {
                  </button>
               </div>
 
-              {/* Social share icons */}
-              <div className="flex items-center gap-4 text-slate-400 text-xs font-black uppercase tracking-widest mb-10">
-                 <span>Share</span>
-                 <div className="w-8 h-8 rounded-full bg-[#3b5998] flex items-center justify-center text-white cursor-pointer hover:brightness-110 transition-all">f</div>
-                 <div className="w-8 h-8 rounded-full bg-[#1da1f2] flex items-center justify-center text-white cursor-pointer hover:brightness-110 transition-all">𝕏</div>
-              </div>
-
-              {/* Activity stats */}
               <div className="space-y-2">
                  <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600">
-                    <span className="text-red-500">🔥 {selectedProject.purchasedRecently || 11} people</span> have purchased this recently
+                    <span className="text-red-500">🔥 {selectedProject.purchasedRecently || 0} people</span> have purchased this recently
                  </div>
                  <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600">
-                    <span className="text-orange-500">{selectedProject.addedToCartRecently || 359} people</span> added this item to cart in last 10 days
+                    <span className="text-orange-500">{selectedProject.addedToCartRecently || 0} people</span> added this item to cart in last 10 days
                  </div>
                  <div className="pt-4 flex flex-col gap-2">
                     <span className="text-[11px] font-black uppercase text-slate-800">
@@ -640,106 +691,114 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Detailed Tabs Area */}
         <div className="mt-20">
            <div className="flex border-b border-slate-200 gap-8 mb-10">
-              {['DESCRIPTION', 'PRODUCT DETAILS', 'COMMENTS (1)'].map((tab, idx) => (
+              {['DESCRIPTION', 'PRODUCT DETAILS', `COMMENTS (${reviews.length})`].map((tab, idx) => (
                 <button 
                   key={tab} 
-                  className={`pb-4 text-xs font-black uppercase tracking-widest border-b-4 transition-all ${idx === 0 ? 'border-[#8cc63f] text-black' : 'border-transparent text-slate-400 hover:text-black'}`}
+                  onClick={() => setActiveDetailTab(idx)}
+                  className={`pb-4 text-xs font-black uppercase tracking-widest border-b-4 transition-all ${activeDetailTab === idx ? 'border-[#8cc63f] text-black' : 'border-transparent text-slate-400 hover:text-black'}`}
                 >
                   {tab}
                 </button>
               ))}
            </div>
            
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-20">
-              <div className="space-y-10">
-                 <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
-                    <h3 className="text-xl font-black uppercase tracking-tighter">Features:</h3>
-                    <ol className="space-y-4">
-                       {(selectedProject.features || []).length > 0 ? selectedProject.features?.map((f, i) => (
-                         <li key={i} className="text-sm text-slate-600 flex gap-3">
-                            <span className="font-black text-black">{i + 1}.</span>
-                            {f}
-                         </li>
-                       )) : (
-                         <p className="text-sm text-slate-400">Detailed feature set currently being drafted for this blueprint.</p>
-                       )}
-                    </ol>
+           <div className="animate-in fade-in duration-500">
+              {activeDetailTab === 0 && (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                    <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
+                       <h3 className="text-xl font-black uppercase tracking-tighter">Detailed Description:</h3>
+                       <div className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                          {selectedProject.detailedDescription || selectedProject.description || "No extended description provided."}
+                       </div>
+                    </div>
+                    <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
+                       <h3 className="text-xl font-black uppercase tracking-tighter">Features:</h3>
+                       <ol className="space-y-4">
+                          {(selectedProject.features || []).length > 0 ? selectedProject.features?.map((f, i) => (
+                            <li key={i} className="text-sm text-slate-600 flex gap-3">
+                               <span className="font-black text-black">{i + 1}.</span>
+                               {f}
+                            </li>
+                          )) : (
+                            <p className="text-sm text-slate-400">Standard feature documentation is currently being finalized.</p>
+                          )}
+                       </ol>
+                    </div>
                  </div>
+              )}
 
-                 <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
-                    <h3 className="text-xl font-black uppercase tracking-tighter">Applications:</h3>
-                    <ol className="space-y-4">
-                       {(selectedProject.applications || []).length > 0 ? selectedProject.applications?.map((a, i) => (
-                         <li key={i} className="text-sm text-slate-600 flex gap-3">
-                            <span className="font-black text-black">{i + 1}.</span>
-                            {a}
-                         </li>
-                       )) : (
-                         <p className="text-sm text-slate-400">Industry-specific application guides available on request.</p>
-                       )}
-                    </ol>
-                 </div>
-              </div>
-
-              <div className="space-y-10">
-                 <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-3xl p-1 shadow-sm overflow-hidden">
-                    <table className="w-full text-xs">
-                       <thead>
-                          <tr className="bg-[#8cc63f] text-white">
-                             <th colSpan={2} className="py-3 px-6 text-center font-black uppercase tracking-widest">General Specifications</th>
-                          </tr>
-                       </thead>
-                       <tbody className="bg-white divide-y divide-slate-100">
-                          {Object.entries(selectedProject.detailedSpecs || {
-                            'Item Type': selectedProject.category,
-                            'Model': selectedProject.name,
-                            'Reference': selectedProject.reference,
-                            'CPU': selectedProject.specs[0] || 'N/A',
-                            'RAM': selectedProject.specs[1] || 'N/A',
-                            'Other Features': selectedProject.specs.slice(2).join(', ') || 'N/A',
-                            'Power': '7W - 25W',
-                            'Operating Temp': '0°C to 35°C',
-                            'Weight (g)': '130g'
-                          }).map(([key, val], i) => (
-                            <tr key={i} className="hover:bg-slate-50 transition-colors">
-                               <td className="py-4 px-6 font-black text-slate-900 w-1/3 bg-slate-50 uppercase tracking-tighter border-r border-slate-100">{key}:</td>
-                               <td className="py-4 px-6 font-bold text-slate-600 uppercase">{val}</td>
-                            </tr>
+              {activeDetailTab === 1 && (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                    <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-3xl p-1 shadow-sm overflow-hidden">
+                       <table className="w-full text-xs">
+                          <thead>
+                             <tr className="bg-[#8cc63f] text-white">
+                                <th colSpan={2} className="py-3 px-6 text-center font-black uppercase tracking-widest">General Specifications</th>
+                             </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-slate-100">
+                             {Object.entries(selectedProject.detailedSpecs || {
+                               'Item Type': selectedProject.category,
+                               'Model': selectedProject.name,
+                               'Reference': selectedProject.reference
+                             }).map(([key, val], i) => (
+                               <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                  <td className="py-4 px-6 font-black text-slate-900 w-1/3 bg-slate-50 uppercase tracking-tighter border-r border-slate-100">{key}:</td>
+                                  <td className="py-4 px-6 font-bold text-slate-600 uppercase">{val}</td>
+                               </tr>
+                             ))}
+                          </tbody>
+                       </table>
+                    </div>
+                    <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
+                       <h3 className="text-xl font-black uppercase tracking-tighter">Package Includes:</h3>
+                       <ul className="space-y-3">
+                          {(selectedProject.packageIncludes || [
+                            `1 x ${selectedProject.name}`,
+                            'Quick Start and Support Guide'
+                          ]).map((item, i) => (
+                            <li key={i} className="text-sm text-slate-600 flex gap-3">
+                               <span className="text-slate-400 font-bold">✓</span>
+                               {item}
+                            </li>
                           ))}
-                       </tbody>
-                    </table>
+                       </ul>
+                    </div>
                  </div>
+              )}
 
-                 <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
-                    <h3 className="text-xl font-black uppercase tracking-tighter">Package Includes:</h3>
-                    <ul className="space-y-3">
-                       {(selectedProject.packageIncludes || [
-                         `1 x ${selectedProject.name}`,
-                         '19V Power Supply (45W)',
-                         'Quick Start and Support Guide'
-                       ]).map((item, i) => (
-                         <li key={i} className="text-sm text-slate-600 flex gap-3">
-                            <span className="text-slate-400">✓</span>
-                            {item}
-                         </li>
-                       ))}
-                    </ul>
+              {activeDetailTab === 2 && (
+                 <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-8">
+                    <h3 className="text-xl font-black uppercase tracking-tighter">Customer Discussions:</h3>
+                    {reviews.length === 0 ? (
+                       <div className="py-20 text-center text-slate-300 font-black uppercase tracking-widest italic border-2 border-dashed border-slate-100 rounded-2xl">
+                          No logged feedback for this kit yet.
+                       </div>
+                    ) : (
+                       <div className="space-y-6">
+                          {reviews.map((r) => (
+                             <div key={r.id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div className="flex justify-between items-center mb-4">
+                                   <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center font-black text-slate-400">{r.userName?.charAt(0)}</div>
+                                      <div>
+                                         <p className="text-xs font-black uppercase">{r.userName}</p>
+                                         <p className="text-[10px] text-slate-400 font-bold">{r.date}</p>
+                                      </div>
+                                   </div>
+                                   <div className="flex gap-0.5 text-[#FFB800]">
+                                      {[1,2,3,4,5].map(s => <svg key={s} className={`w-3.5 h-3.5 ${s <= r.rating ? 'fill-current' : 'text-slate-200'}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>)}
+                                   </div>
+                                </div>
+                                <p className="text-sm text-slate-600 leading-relaxed italic">"{r.comment}"</p>
+                             </div>
+                          ))}
+                       </div>
+                    )}
                  </div>
-              </div>
-           </div>
-
-           <div className="mt-20 p-10 bg-slate-900 text-white rounded-[40px] text-center space-y-6 shadow-2xl">
-              <h3 className="text-2xl font-black uppercase italic tracking-tighter">Documentation & Resources</h3>
-              <div className="flex flex-wrap justify-center gap-6">
-                 {['Getting Started Guide', 'Hardware Schematics', 'Datasheet PDF', 'Sample Source Code'].map(d => (
-                   <button key={d} className="px-8 py-3 bg-white/10 hover:bg-[#8cc63f] rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10">
-                      {d}
-                   </button>
-                 ))}
-              </div>
+              )}
            </div>
         </div>
       </div>
@@ -795,7 +854,7 @@ const App: React.FC = () => {
 
       {(isAddingAddress || editingAddress) && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 p-10">
+          <div className="bg-white w-full max-lg rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 p-10">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-lg font-black text-slate-900 uppercase tracking-widest">{editingAddress ? 'Modify Address' : 'New Address'}</h3>
               <button onClick={() => { setIsAddingAddress(false); setEditingAddress(null); }} className="text-slate-400">✕</button>
@@ -908,7 +967,11 @@ const App: React.FC = () => {
             setProjectForm({ 
               name: '', price: 0, reference: '', category: SIDEBAR_CATEGORIES[0], 
               inStock: true, rating: 5, reviewCount: 0, image: '', video: '', 
-              description: '', specs: [], priceAdjustmentType: 'none', priceAdjustmentAmount: 0 
+              description: '', detailedDescription: '', specs: [], features: [],
+              packageIncludes: [],
+              detailedSpecs: {},
+              purchasedRecently: 0, addedToCartRecently: 0,
+              priceAdjustmentType: 'none', priceAdjustmentAmount: 0 
             }); 
           }} 
           className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black rounded-2xl transition-all"
@@ -919,15 +982,30 @@ const App: React.FC = () => {
 
       {(isAddingProject || editingProject) && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh]">
+          <div className="bg-white w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh]">
             <div className="bg-slate-50 p-8 flex justify-between items-center border-b border-slate-100 shrink-0">
               <h3 className="text-lg font-black text-slate-900 uppercase tracking-widest">{editingProject ? 'Modify Blueprint' : 'New Blueprint'}</h3>
               <button onClick={() => { setIsAddingProject(false); setEditingProject(null); }} className="text-slate-400">✕</button>
             </div>
-            <form onSubmit={handleSaveProject} className="p-10 space-y-4 overflow-y-auto hide-scrollbar">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Blueprint Name</label>
-                <input required type="text" value={projectForm.name || ''} onChange={e => setProjectForm({...projectForm, name: e.target.value})} className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
+            <form onSubmit={handleSaveProject} className="p-10 space-y-6 overflow-y-auto hide-scrollbar">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Blueprint Name</label>
+                  <input required type="text" value={projectForm.name || ''} onChange={e => setProjectForm({...projectForm, name: e.target.value})} className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Category Sector</label>
+                  <select 
+                    value={projectForm.category || SIDEBAR_CATEGORIES[0]} 
+                    onChange={e => {
+                      const newCat = e.target.value;
+                      setProjectForm({...projectForm, category: newCat});
+                    }} 
+                    className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold appearance-none cursor-pointer border-2 border-transparent focus:border-[#FFB800]"
+                  >
+                    {SIDEBAR_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -956,7 +1034,59 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Price Adjustment Logic (Optional) */}
+              {/* Descriptions & Marketing Fields */}
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-6">
+                <span className="block text-[11px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-2">Product Content & Live Statistics</span>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Short Description</label>
+                      <textarea rows={2} value={projectForm.description || ''} onChange={e => setProjectForm({...projectForm, description: e.target.value})} className="w-full px-5 py-4 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] resize-none" placeholder="One-line summary..." />
+                   </div>
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Detailed Product Story</label>
+                      <textarea rows={2} value={projectForm.detailedDescription || ''} onChange={e => setProjectForm({...projectForm, detailedDescription: e.target.value})} className="w-full px-5 py-4 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] resize-none" placeholder="Detailed engineering overview..." />
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Features List (One per line)</label>
+                      <textarea rows={4} value={Array.isArray(projectForm.features) ? projectForm.features.join('\n') : (projectForm.features || '')} onChange={e => setProjectForm({...projectForm, features: e.target.value as any})} className="w-full px-5 py-4 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] resize-none" placeholder="Feature A&#10;Feature B..." />
+                   </div>
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Package Contents (One per line)</label>
+                      <textarea rows={4} value={Array.isArray(projectForm.packageIncludes) ? projectForm.packageIncludes.join('\n') : (projectForm.packageIncludes || '')} onChange={e => setProjectForm({...projectForm, packageIncludes: e.target.value as any})} className="w-full px-5 py-4 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] resize-none" placeholder="1 x Controller&#10;2 x Cables..." />
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {['CPU', 'RAM', 'Power', 'Weight'].map(specKey => (
+                    <div key={specKey}>
+                      <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">{specKey}</label>
+                      <input 
+                        type="text" 
+                        value={projectForm.detailedSpecs?.[specKey] || ''} 
+                        onChange={e => setProjectForm({...projectForm, detailedSpecs: {...(projectForm.detailedSpecs || {}), [specKey]: e.target.value}})}
+                        className="w-full px-4 py-3 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" 
+                        placeholder="N/A"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Recent Purchases</label>
+                    <input type="number" value={projectForm.purchasedRecently || 0} onChange={e => setProjectForm({...projectForm, purchasedRecently: Number(e.target.value)})} className="w-full px-5 py-4 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Cart Deployment Logs (10 Days)</label>
+                    <input type="number" value={projectForm.addedToCartRecently || 0} onChange={e => setProjectForm({...projectForm, addedToCartRecently: Number(e.target.value)})} className="w-full px-5 py-4 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
                 <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Price Adjustment (Optional)</span>
                 <div className="grid grid-cols-2 gap-4">
@@ -985,7 +1115,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Review & Feedback Curation (Optional) */}
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
                 <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Review Curation (Optional)</span>
                 <div className="grid grid-cols-2 gap-4">
@@ -1017,21 +1146,6 @@ const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Category Sector</label>
-                <select 
-                  value={projectForm.category || SIDEBAR_CATEGORIES[0]} 
-                  onChange={e => {
-                    const newCat = e.target.value;
-                    const newRef = generateReference(newCat);
-                    setProjectForm({...projectForm, category: newCat, reference: newRef});
-                  }} 
-                  className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold appearance-none cursor-pointer border-2 border-transparent focus:border-[#FFB800]"
-                >
-                  {SIDEBAR_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-
-              <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Image Source URL</label>
                 <div className="flex gap-2">
                   <input 
@@ -1052,13 +1166,6 @@ const App: React.FC = () => {
                     />
                   </label>
                 </div>
-                {projectForm.image && (
-                  <div className="mt-4 p-2 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-4">
-                    <img src={projectForm.image} className="w-12 h-12 object-contain rounded-lg bg-white border border-slate-200" alt="Preview" />
-                    <span className="text-[9px] font-black uppercase text-slate-400 truncate flex-1">Image Loaded</span>
-                    <button type="button" onClick={() => setProjectForm({...projectForm, image: ''})} className="text-red-500 hover:text-red-700 p-2">✕</button>
-                  </div>
-                )}
               </div>
 
               <div>
@@ -1081,21 +1188,6 @@ const App: React.FC = () => {
                     />
                   </label>
                 </div>
-                {projectForm.video && (
-                  <div className="mt-4 p-4 bg-slate-900 rounded-2xl border border-slate-800 flex flex-col gap-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-black uppercase text-white tracking-widest flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        Demo Preview Active
-                      </span>
-                      <button type="button" onClick={() => setProjectForm({...projectForm, video: ''})} className="text-red-400 hover:text-red-500 text-xs font-black uppercase underline">Remove Clip</button>
-                    </div>
-                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-black flex items-center justify-center">
-                      <video src={projectForm.video} controls className="w-full h-full object-contain" autoPlay muted loop />
-                    </div>
-                  </div>
-                )}
-                <p className="mt-1 text-[8px] font-bold text-slate-400 uppercase tracking-widest italic">Supports direct links or device upload (Max 50MB suggested)</p>
               </div>
 
               <div className="flex items-center gap-8 py-2">
@@ -1122,37 +1214,36 @@ const App: React.FC = () => {
           <div key={p.id} className="flex items-center gap-6 p-6 bg-slate-50/50 rounded-3xl border border-slate-100 hover:border-[#FFB800] transition-colors group">
             <div className="relative">
               <img src={p.image} alt={p.name} className="w-16 h-16 object-contain mix-blend-multiply group-hover:scale-110 transition-transform" />
-              {p.video && (
-                <div className="absolute -bottom-1 -right-1 bg-black text-white p-1 rounded-md">
-                   <svg className="w-3 h-3 text-[#FFB800]" fill="currentColor" viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
-                </div>
-              )}
             </div>
             <div className="flex-1">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{p.reference} • {p.category}</p>
               <h4 className="text-sm font-black text-slate-900 uppercase">{p.name}</h4>
               <p className="text-sm font-black text-green-600">
                 BDT {p.price.toLocaleString()}
-                {p.priceAdjustmentType !== 'none' && p.priceAdjustmentAmount ? (
-                   <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded ${p.priceAdjustmentType === 'reduced' ? 'bg-red-100 text-red-500' : 'bg-blue-100 text-blue-500'}`}>
-                     {p.priceAdjustmentType === 'reduced' ? '-' : '+'} {p.priceAdjustmentAmount}
-                   </span>
-                ) : null}
                 <span className="ml-3 text-[10px] text-slate-400 uppercase">
-                  ⭐ {p.rating} ({p.reviewCount} revs)
+                  📊 {p.purchasedRecently} sold / {p.addedToCartRecently} in carts
                 </span>
               </p>
             </div>
             <div className="flex gap-3">
               <button 
-                onClick={() => { setEditingProject(p); setProjectForm({...p}); setIsAddingProject(true); }} 
+                onClick={() => { 
+                  setEditingProject(p); 
+                  setProjectForm({
+                    ...p,
+                    features: p.features || [],
+                    packageIncludes: p.packageIncludes || [],
+                    detailedSpecs: p.detailedSpecs || {}
+                  }); 
+                  setIsAddingProject(true); 
+                }} 
                 className="px-5 py-2.5 bg-white border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-[#FFB800] transition-colors"
               >
                 Edit
               </button>
               <button 
                 onClick={() => {
-                  if(confirm("Confirm deletion from lab inventory?")) {
+                  if(confirm("Confirm deletion?")) {
                     setInventory(prev => prev.filter(x => x.id !== p.id));
                     addNotification("Project removed.");
                   }
@@ -1169,7 +1260,6 @@ const App: React.FC = () => {
   );
 
   const renderConfirmedOrdersManager = () => {
-    // Dynamically aggregate ALL orders from the synchronized user list
     const allOrders = verifiedUsers.reduce((acc, user) => {
       const userOrders = (user.orders || []).map(o => ({ 
         ...o, 
@@ -1189,7 +1279,6 @@ const App: React.FC = () => {
           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-widest">Global Confirmed Orders</h1>
         </div>
         
-        {/* Product List Popup */}
         {viewingItemsOrder && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
              <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[80vh]">
@@ -1491,9 +1580,65 @@ const App: React.FC = () => {
         {notifications.map(n => <div key={n.id} className="bg-black text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-right-10"><div className="w-2 h-2 bg-[#FFB800] rounded-full animate-pulse"></div><span className="text-xs font-black uppercase">{n.text}</span></div>)}
       </div>
 
+      {showCartOptionsModal && pendingAddition && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4">
+          <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 p-12 flex flex-col">
+            <h3 className="text-2xl font-black uppercase text-slate-900 tracking-tighter mb-8 border-b border-slate-100 pb-6">Blueprint Package Options</h3>
+            
+            <div className="space-y-6 mb-10">
+              <label className="flex items-center gap-4 p-5 bg-slate-50 rounded-2xl border-2 border-transparent hover:border-[#8cc63f] cursor-pointer transition-all">
+                <input 
+                  type="checkbox" 
+                  checked={optionIEEE} 
+                  onChange={(e) => setOptionIEEE(e.target.checked)}
+                  className="w-6 h-6 accent-[#8cc63f]"
+                />
+                <div>
+                  <p className="text-sm font-black uppercase text-slate-900">Include IEEE Standard Report</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Standardized technical documentation for submission.</p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-4 p-5 bg-slate-50 rounded-2xl border-2 border-transparent hover:border-[#8cc63f] cursor-pointer transition-all">
+                <input 
+                  type="checkbox" 
+                  checked={optionPPTX} 
+                  onChange={(e) => setOptionPPTX(e.target.checked)}
+                  className="w-6 h-6 accent-[#8cc63f]"
+                />
+                <div>
+                  <p className="text-sm font-black uppercase text-slate-900">Include Presentation PPTX File</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Curated slide deck for professional walkthroughs.</p>
+                </div>
+              </label>
+            </div>
+
+            {(optionIEEE || optionPPTX) && (
+              <div className="mb-10 p-6 bg-blue-50 border-l-4 border-blue-500 rounded-r-xl animate-in fade-in slide-in-from-left-4">
+                 <p className="text-xs font-black uppercase text-blue-900 mb-1">Retrieval Protocol:</p>
+                 <p className="text-xs font-bold text-blue-700 leading-relaxed uppercase">
+                   Provide order ID in Whatsapp Number <span className="font-black text-blue-900">(01788582369)</span> to get file.
+                 </p>
+              </div>
+            )}
+
+            <div className="flex gap-4">
+               <button 
+                onClick={() => { setShowCartOptionsModal(false); setPendingAddition(null); }}
+                className="flex-1 py-5 rounded-2xl border-2 border-slate-100 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors"
+               >Cancel</button>
+               <button 
+                onClick={() => addToCart(pendingAddition.proj, pendingAddition.qty, true)}
+                className="flex-[2] bg-black text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#8cc63f] transition-all shadow-xl shadow-green-100"
+               >Confirm Addition</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAuthModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-xl p-4">
-          <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 p-12 relative flex flex-col max-h-[95vh]">
+          <div className="bg-white w-full max-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 p-12 relative flex flex-col max-h-[95vh]">
             <button onClick={() => setShowAuthModal(false)} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 transition-colors z-10">✕</button>
             <div className="flex justify-center mb-8 shrink-0"><div className="scale-75">{LOGO_SVG}</div></div>
             <div className="overflow-y-auto hide-scrollbar">
@@ -1506,12 +1651,6 @@ const App: React.FC = () => {
               ) : (
                 <div className="space-y-6">
                   <h2 className="text-xl font-black text-center uppercase mb-8 tracking-widest text-slate-900">{authPersona === 'admin' ? 'Root Authentication' : (authMode === 'signin' ? 'User Entry' : 'Create User Account')}</h2>
-                  {authPersona === 'user' && (
-                    <div className="flex bg-slate-100 p-1 rounded-2xl mb-8">
-                      <button onClick={() => setAuthMode('signin')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-xl transition-all ${authMode === 'signin' ? 'bg-white shadow-sm' : 'text-slate-400'}`}>Sign In</button>
-                      <button onClick={() => setAuthMode('signup')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-xl transition-all ${authMode === 'signup' ? 'bg-white shadow-sm' : 'text-slate-400'}`}>Create Account</button>
-                    </div>
-                  )}
                   <form onSubmit={handleAuthSubmit} className="space-y-4">
                     {authPersona === 'user' && authMode === 'signup' && (
                       <div className="grid grid-cols-2 gap-3">
@@ -1519,7 +1658,6 @@ const App: React.FC = () => {
                         <input required type="text" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last Name" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
                       </div>
                     )}
-                    {authPersona === 'user' && authMode === 'signup' && <input required type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone Number" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />}
                     <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] transition-all" />
                     <input required type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] transition-all" />
                     <button type="submit" disabled={isSending} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all shadow-lg mt-4">{isSending ? 'Authenticating...' : 'Authorize'}</button>
