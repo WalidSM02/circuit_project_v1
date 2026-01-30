@@ -131,6 +131,7 @@ const App: React.FC = () => {
   
   const [currentTab, setCurrentTab] = useState<NavigationTab>(NavigationTab.HOME);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [detailQuantity, setDetailQuantity] = useState(1);
   const [accountSubView, setAccountSubView] = useState<'menu' | 'information' | 'addresses' | 'orders' | 'inventory' | 'reviews' | 'saved-carts' | 'confirmed-orders'>('menu');
   
   const [checkoutStep, setCheckoutStep] = useState<'info' | 'address' | 'payment' | null>(null);
@@ -162,6 +163,43 @@ const App: React.FC = () => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+
+  // Countdown timer state
+  const [timeLeft, setTimeLeft] = useState({
+    days: '00',
+    hours: '00',
+    minutes: '00',
+    seconds: '00'
+  });
+
+  useEffect(() => {
+    const target = new Date();
+    target.setHours(target.getHours() + 24); // Set to 24 hours from now for demonstration
+
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = target.getTime() - now;
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      setTimeLeft({
+        days: String(days).padStart(2, '0'),
+        hours: String(hours).padStart(2, '0'),
+        minutes: String(minutes).padStart(2, '0'),
+        seconds: String(seconds).padStart(2, '0')
+      });
+
+      if (distance < 0) {
+        clearInterval(timer);
+        setTimeLeft({ days: '00', hours: '00', minutes: '00', seconds: '00' });
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   // Sync to Storage
   useEffect(() => {
@@ -427,12 +465,12 @@ const App: React.FC = () => {
     addNotification(`Status changed to ${newStatus}`);
   };
 
-  const addToCart = (proj: Project) => {
+  const addToCart = (proj: Project, qty: number = 1) => {
     const existing = cart.find(x => x.id === proj.id);
     if (existing) {
-      setCart(cart.map(x => x.id === proj.id ? { ...x, quantity: x.quantity + 1 } : x));
+      setCart(cart.map(x => x.id === proj.id ? { ...x, quantity: x.quantity + qty } : x));
     } else {
-      setCart([...cart, { ...proj, quantity: 1 }]);
+      setCart([...cart, { ...proj, quantity: qty }]);
     }
     addNotification(`${proj.name} added to cart.`);
   };
@@ -446,7 +484,7 @@ const App: React.FC = () => {
       <div className="max-w-7xl mx-auto px-8 py-12 animate-in fade-in slide-in-from-bottom-2">
         {/* Breadcrumb / Back button */}
         <button 
-          onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedProject(null); }}
+          onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedProject(null); setDetailQuantity(1); }}
           className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 hover:text-black mb-8 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -519,16 +557,21 @@ const App: React.FC = () => {
                 )}
               </div>
               
-              {/* Fake Countdown area like the screenshot */}
+              {/* Dynamic Countdown area */}
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex items-center justify-between mb-8">
                  <div className="flex flex-col">
                    <span className="text-[10px] font-black uppercase text-green-500 italic mb-2">Discount Ends In</span>
                    <div className="flex gap-4">
-                      {['00', '06', '59', '52'].map((n, i) => (
+                      {[
+                        { label: 'Days', val: timeLeft.days },
+                        { label: 'Hours', val: timeLeft.hours },
+                        { label: 'Minutes', val: timeLeft.minutes },
+                        { label: 'Seconds', val: timeLeft.seconds }
+                      ].map((item, i) => (
                         <div key={i} className="flex flex-col items-center">
-                          <div className="bg-black text-white px-2 py-1 rounded text-lg font-black tracking-widest">{n}</div>
+                          <div className="bg-black text-white px-2 py-1 rounded text-lg font-black tracking-widest min-w-[40px] text-center">{item.val}</div>
                           <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">
-                            {['Days', 'Hours', 'Minutes', 'Seconds'][i]}
+                            {item.label}
                           </span>
                         </div>
                       ))}
@@ -544,13 +587,24 @@ const App: React.FC = () => {
               </div>
 
               <div className="flex gap-4 items-center mb-10">
-                 <div className="flex border border-slate-200 rounded-xl overflow-hidden">
-                    <button className="px-4 py-4 hover:bg-slate-100 transition-colors">－</button>
-                    <input type="number" defaultValue={1} className="w-12 text-center font-black text-sm outline-none bg-white" />
-                    <button className="px-4 py-4 hover:bg-slate-100 transition-colors">＋</button>
+                 <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                    <button 
+                      onClick={() => setDetailQuantity(Math.max(1, detailQuantity - 1))}
+                      className="px-6 py-4 hover:bg-slate-100 transition-colors font-black text-slate-400 hover:text-black"
+                    >－</button>
+                    <input 
+                      type="number" 
+                      value={detailQuantity} 
+                      onChange={(e) => setDetailQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-16 text-center font-black text-sm outline-none bg-white border-x border-slate-100" 
+                    />
+                    <button 
+                      onClick={() => setDetailQuantity(detailQuantity + 1)}
+                      className="px-6 py-4 hover:bg-slate-100 transition-colors font-black text-slate-400 hover:text-black"
+                    >＋</button>
                  </div>
                  <button 
-                  onClick={() => addToCart(selectedProject)}
+                  onClick={() => addToCart(selectedProject, detailQuantity)}
                   className="flex-1 bg-[#8cc63f] hover:brightness-105 text-white py-4 rounded-xl flex items-center justify-center gap-3 shadow-xl shadow-green-100 transition-all font-black uppercase text-xs tracking-widest active:scale-95"
                  >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" strokeWidth="2.5"/></svg>
@@ -1511,7 +1565,7 @@ const App: React.FC = () => {
               <div className="rounded-[40px] overflow-hidden shadow-2xl"><HeroCarousel /></div>
               <section>
                 <div className="flex items-baseline justify-between mb-8"><h2 className="text-3xl font-black uppercase italic tracking-tighter">{selectedCategory || 'Active Kits'}</h2><span className="text-[10px] font-black text-slate-300 uppercase">{filteredInventory.length} results</span></div>
-                {filteredInventory.length === 0 ? <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] py-40 text-center flex flex-col items-center gap-6"><svg className="w-16 h-16 opacity-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg><p className="text-xl font-black text-slate-200 uppercase">No active blueprints</p></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{filteredInventory.map(p => <ProjectCard key={p.id} project={p} onAddToCart={addToCart} onViewDetails={(proj) => { setSelectedProject(proj); setCurrentTab(NavigationTab.PROJECT_DETAILS); window.scrollTo(0,0); }} />)}</div>}
+                {filteredInventory.length === 0 ? <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] py-40 text-center flex flex-col items-center gap-6"><svg className="w-16 h-16 opacity-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg><p className="text-xl font-black text-slate-200 uppercase">No active blueprints</p></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{filteredInventory.map(p => <ProjectCard key={p.id} project={p} onAddToCart={(proj) => addToCart(proj, 1)} onViewDetails={(proj) => { setSelectedProject(proj); setCurrentTab(NavigationTab.PROJECT_DETAILS); window.scrollTo(0,0); }} />)}</div>}
               </section>
             </main>
           </div>
