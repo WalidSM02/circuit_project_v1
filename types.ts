@@ -14,6 +14,9 @@ export interface Project {
   rating: number;
   reviewCount: number;
   inStock: boolean;
+  // Optional metadata for price state
+  priceAdjustmentType?: 'none' | 'reduced' | 'increased';
+  priceAdjustmentAmount?: number;
 }
 
 export interface CartItem extends Project {

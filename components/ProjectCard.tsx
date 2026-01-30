@@ -25,15 +25,22 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onAddToCart }
     );
   };
 
+  const isReduced = project.priceAdjustmentType === 'reduced' || (project.originalPrice && project.price < project.originalPrice);
+  const isIncreased = project.priceAdjustmentType === 'increased';
+
   return (
     <div className="bg-white border border-gray-100 rounded-lg p-5 flex flex-col items-center text-center shadow-sm hover:shadow-md transition-shadow group h-full">
       {/* Image and Badges */}
       <div className="relative w-full aspect-square mb-6">
-        {project.originalPrice && (
+        {(isReduced || isIncreased) && (
           <div className="absolute top-0 left-0 z-10 flex flex-col gap-1 items-start">
-            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-1 uppercase tracking-tighter">Reduced price</span>
+            <span className={`${isReduced ? 'bg-red-500' : 'bg-blue-600'} text-white text-[10px] font-bold px-2 py-1 uppercase tracking-tighter`}>
+              {isReduced ? 'Reduced price' : 'Updated price'}
+            </span>
             {project.discount && (
-              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-1 uppercase tracking-tighter">{project.discount}</span>
+              <span className={`${isReduced ? 'bg-red-500' : 'bg-blue-600'} text-white text-[10px] font-bold px-2 py-1 uppercase tracking-tighter`}>
+                {project.discount}
+              </span>
             )}
           </div>
         )}
@@ -71,7 +78,9 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onAddToCart }
         {/* Pricing */}
         <div className="mb-6">
           <div className="flex items-baseline gap-2 justify-center">
-            <span className="text-lg font-black text-red-500">BDT {project.price.toLocaleString()}</span>
+            <span className={`text-lg font-black ${isReduced ? 'text-red-500' : 'text-slate-900'}`}>
+              BDT {project.price.toLocaleString()}
+            </span>
             {project.originalPrice && (
               <span className="text-xs font-bold text-gray-400 line-through decoration-gray-400 decoration-1">
                 BDT {project.originalPrice.toLocaleString()}

@@ -149,7 +149,8 @@ const App: React.FC = () => {
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectForm, setProjectForm] = useState<Partial<Project>>({
-    name: '', description: '', price: 0, reference: '', category: SIDEBAR_CATEGORIES[0], inStock: true, rating: 5, reviewCount: 0, image: '', video: '', specs: []
+    name: '', description: '', price: 0, reference: '', category: SIDEBAR_CATEGORIES[0], inStock: true, rating: 5, reviewCount: 0, image: '', video: '', specs: [],
+    priceAdjustmentType: 'none', priceAdjustmentAmount: 0
   });
 
   const [viewingItemsOrder, setViewingItemsOrder] = useState<Order | null>(null);
@@ -275,23 +276,52 @@ const App: React.FC = () => {
 
   const handleSaveProject = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Logic to calculate originalPrice and discount based on current price and adjustment
+    const sellingPrice = projectForm.price || 0;
+    const adjustmentType = projectForm.priceAdjustmentType || 'none';
+    const adjustmentAmount = projectForm.priceAdjustmentAmount || 0;
+    
+    let finalOriginalPrice: number | undefined = undefined;
+    let finalDiscount: string | undefined = undefined;
+
+    if (adjustmentType === 'reduced' && adjustmentAmount > 0) {
+      finalOriginalPrice = sellingPrice + adjustmentAmount;
+      finalDiscount = `- BDT ${adjustmentAmount.toLocaleString()}`;
+    } else if (adjustmentType === 'increased' && adjustmentAmount > 0) {
+      finalOriginalPrice = sellingPrice - adjustmentAmount;
+      finalDiscount = `+ BDT ${adjustmentAmount.toLocaleString()}`;
+    }
+
     if (editingProject) {
-      setInventory(prev => prev.map(p => p.id === editingProject.id ? { ...p, ...projectForm } as Project : p));
+      setInventory(prev => prev.map(p => p.id === editingProject.id ? { 
+        ...p, 
+        ...projectForm, 
+        price: sellingPrice,
+        originalPrice: finalOriginalPrice,
+        discount: finalDiscount,
+        rating: Number(projectForm.rating ?? 5),
+        reviewCount: Number(projectForm.reviewCount ?? 0)
+      } as Project : p));
       addNotification("Blueprint updated successfully.");
     } else {
       const newProject: Project = { 
         id: `proj-${Date.now()}`,
         name: projectForm.name || '',
         description: projectForm.description || 'Project blueprint description not available.',
-        price: projectForm.price || 0,
+        price: sellingPrice,
+        originalPrice: finalOriginalPrice,
+        discount: finalDiscount,
         category: projectForm.category || SIDEBAR_CATEGORIES[0],
         image: projectForm.image || '',
         specs: projectForm.specs || [],
         reference: projectForm.reference || generateReference(projectForm.category || SIDEBAR_CATEGORIES[0]),
-        rating: projectForm.rating || 5,
-        reviewCount: projectForm.reviewCount || 0,
+        rating: Number(projectForm.rating ?? 5),
+        reviewCount: Number(projectForm.reviewCount ?? 0),
         inStock: projectForm.inStock ?? true,
-        video: projectForm.video
+        video: projectForm.video,
+        priceAdjustmentType: adjustmentType,
+        priceAdjustmentAmount: adjustmentAmount
       };
       setInventory(prev => [newProject, ...prev]);
       addNotification("New blueprint added to lab inventory.");
@@ -555,7 +585,11 @@ const App: React.FC = () => {
           onClick={() => { 
             setIsAddingProject(true); 
             setEditingProject(null); 
-            setProjectForm({ name: '', price: 0, reference: '', category: SIDEBAR_CATEGORIES[0], inStock: true, rating: 5, reviewCount: 0, image: '', video: '', description: '', specs: [] }); 
+            setProjectForm({ 
+              name: '', price: 0, reference: '', category: SIDEBAR_CATEGORIES[0], 
+              inStock: true, rating: 5, reviewCount: 0, image: '', video: '', 
+              description: '', specs: [], priceAdjustmentType: 'none', priceAdjustmentAmount: 0 
+            }); 
           }} 
           className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black rounded-2xl transition-all"
         >
@@ -598,6 +632,66 @@ const App: React.FC = () => {
                     >
                       Gen
                     </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Price Adjustment Logic (Optional) */}
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
+                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Price Adjustment (Optional)</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">Type</label>
+                    <select 
+                      value={projectForm.priceAdjustmentType || 'none'} 
+                      onChange={e => setProjectForm({...projectForm, priceAdjustmentType: e.target.value as any})}
+                      className="w-full px-4 py-3 bg-white rounded-xl outline-none font-bold appearance-none cursor-pointer border-2 border-transparent focus:border-[#FFB800]"
+                    >
+                      <option value="none">Normal Price</option>
+                      <option value="reduced">Reduced Price</option>
+                      <option value="increased">Increased Price</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">Amount (BDT)</label>
+                    <input 
+                      type="number" 
+                      placeholder="0"
+                      value={projectForm.priceAdjustmentAmount || 0} 
+                      onChange={e => setProjectForm({...projectForm, priceAdjustmentAmount: Number(e.target.value)})} 
+                      className="w-full px-4 py-3 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Review & Feedback Curation (Optional) */}
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
+                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Review Curation (Optional)</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">Rating (1-5)</label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      max="5" 
+                      step="0.1"
+                      placeholder="5"
+                      value={projectForm.rating ?? 5} 
+                      onChange={e => setProjectForm({...projectForm, rating: Number(e.target.value)})} 
+                      className="w-full px-4 py-3 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">Total Reviewers</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={projectForm.reviewCount ?? 0} 
+                      onChange={e => setProjectForm({...projectForm, reviewCount: Number(e.target.value)})} 
+                      className="w-full px-4 py-3 bg-white rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" 
+                    />
                   </div>
                 </div>
               </div>
@@ -717,7 +811,17 @@ const App: React.FC = () => {
             <div className="flex-1">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{p.reference} • {p.category}</p>
               <h4 className="text-sm font-black text-slate-900 uppercase">{p.name}</h4>
-              <p className="text-sm font-black text-green-600">BDT {p.price.toLocaleString()}</p>
+              <p className="text-sm font-black text-green-600">
+                BDT {p.price.toLocaleString()}
+                {p.priceAdjustmentType !== 'none' && p.priceAdjustmentAmount ? (
+                   <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded ${p.priceAdjustmentType === 'reduced' ? 'bg-red-100 text-red-500' : 'bg-blue-100 text-blue-500'}`}>
+                     {p.priceAdjustmentType === 'reduced' ? '-' : '+'} {p.priceAdjustmentAmount}
+                   </span>
+                ) : null}
+                <span className="ml-3 text-[10px] text-slate-400 uppercase">
+                  ⭐ {p.rating} ({p.reviewCount} revs)
+                </span>
+              </p>
             </div>
             <div className="flex gap-3">
               <button 
@@ -1140,7 +1244,7 @@ const App: React.FC = () => {
               <div className="rounded-[40px] overflow-hidden shadow-2xl"><HeroCarousel /></div>
               <section>
                 <div className="flex items-baseline justify-between mb-8"><h2 className="text-3xl font-black uppercase italic tracking-tighter">{selectedCategory || 'Active Kits'}</h2><span className="text-[10px] font-black text-slate-300 uppercase">{filteredInventory.length} results</span></div>
-                {filteredInventory.length === 0 ? <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] py-40 text-center flex flex-col items-center gap-6"><svg className="w-16 h-16 opacity-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg><p className="text-xl font-black text-slate-200 uppercase">No active blueprints</p></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{filteredInventory.map(p => <ProjectCard key={p.id} project={p} onAddToCart={(proj) => { const exc = cart.find(x => x.id === proj.id); if(exc) setCart(cart.map(x => x.id === proj.id ? {...x, quantity: x.quantity + 1} : x)); else setCart([...cart, {...proj, quantity: 1}]); addNotification(`${proj.name} added.`); }} />)}</div>}
+                {filteredInventory.length === 0 ? <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] py-40 text-center flex flex-col items-center gap-6"><svg className="w-16 h-16 opacity-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg><p className="text-xl font-black text-slate-200 uppercase">No active blueprints</p></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{filteredInventory.map(p => <ProjectCard key={p.id} project={p} onAddToCart={(proj) => { const exc = cart.find(x => x.id === proj.id); if(exc) setCart(cart.map(x => x.id === proj.id ? {...x, quantity: x.quantity + 1} : x)); else setCart([...cart, {...proj, quantity: 1}]); addNotification(`${proj.name} added.`); }} />)}</div>}
               </section>
             </main>
           </div>
