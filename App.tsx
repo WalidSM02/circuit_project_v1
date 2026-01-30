@@ -130,6 +130,7 @@ const App: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   
   const [currentTab, setCurrentTab] = useState<NavigationTab>(NavigationTab.HOME);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [accountSubView, setAccountSubView] = useState<'menu' | 'information' | 'addresses' | 'orders' | 'inventory' | 'reviews' | 'saved-carts' | 'confirmed-orders'>('menu');
   
   const [checkoutStep, setCheckoutStep] = useState<'info' | 'address' | 'payment' | null>(null);
@@ -424,6 +425,271 @@ const App: React.FC = () => {
       return user;
     }));
     addNotification(`Status changed to ${newStatus}`);
+  };
+
+  const addToCart = (proj: Project) => {
+    const existing = cart.find(x => x.id === proj.id);
+    if (existing) {
+      setCart(cart.map(x => x.id === proj.id ? { ...x, quantity: x.quantity + 1 } : x));
+    } else {
+      setCart([...cart, { ...proj, quantity: 1 }]);
+    }
+    addNotification(`${proj.name} added to cart.`);
+  };
+
+  const renderProjectDetails = () => {
+    if (!selectedProject) return null;
+
+    const isReduced = selectedProject.priceAdjustmentType === 'reduced' || (selectedProject.originalPrice && selectedProject.price < selectedProject.originalPrice);
+    
+    return (
+      <div className="max-w-7xl mx-auto px-8 py-12 animate-in fade-in slide-in-from-bottom-2">
+        {/* Breadcrumb / Back button */}
+        <button 
+          onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedProject(null); }}
+          className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 hover:text-black mb-8 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Back to Inventory
+        </button>
+
+        <div className="flex flex-col lg:flex-row gap-12 mb-20">
+          {/* Left Column: Gallery */}
+          <div className="flex-1 space-y-6">
+            <div className="bg-white border border-slate-100 rounded-3xl p-8 relative overflow-hidden flex items-center justify-center min-h-[400px]">
+              {isReduced && (
+                <div className="absolute top-6 left-6 z-10">
+                   <span className="bg-red-500 text-white text-[11px] font-black px-4 py-1.5 uppercase tracking-wider rounded-sm shadow-lg">Reduced price</span>
+                </div>
+              )}
+              <img src={selectedProject.image} alt={selectedProject.name} className="max-h-[500px] object-contain mix-blend-multiply" />
+            </div>
+            {/* Thumbnails placeholder */}
+            <div className="flex gap-4">
+               {[selectedProject.image, ...(selectedProject.thumbnails || [])].slice(0, 4).map((img, i) => (
+                 <div key={i} className="w-24 h-24 border border-slate-200 rounded-xl p-2 cursor-pointer hover:border-[#FFB800] bg-white transition-all overflow-hidden flex items-center justify-center">
+                    <img src={img} className="object-contain max-h-full" alt="Thumbnail" />
+                 </div>
+               ))}
+               {selectedProject.video && (
+                 <div className="w-24 h-24 border-2 border-[#FFB800] rounded-xl p-2 cursor-pointer bg-slate-900 flex flex-col items-center justify-center text-white gap-1 shadow-lg">
+                    <svg className="w-6 h-6 text-[#FFB800]" fill="currentColor" viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
+                    <span className="text-[8px] font-black uppercase">Demo</span>
+                 </div>
+               )}
+            </div>
+          </div>
+
+          {/* Right Column: Info & Action */}
+          <div className="flex-1 space-y-8">
+            <div className="space-y-4">
+              <h1 className="text-3xl font-black text-slate-900 uppercase leading-tight tracking-tight">{selectedProject.name}</h1>
+              <div className="flex items-center gap-6 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <span>Reference: <span className="text-slate-900">{selectedProject.reference}</span></span>
+                <span>Brand: <span className="text-slate-900">{selectedProject.brand || 'CircuitProjects'}</span></span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <ul className="space-y-2">
+                {(selectedProject.features || selectedProject.specs || []).slice(0, 6).map((feat, i) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-slate-600">
+                    <div className="w-1.5 h-1.5 bg-black rounded-full mt-1.5 shrink-0" />
+                    <span>{feat}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-sm text-slate-500 leading-relaxed max-w-xl">
+                {selectedProject.description}
+              </p>
+            </div>
+
+            <div className="pt-6 border-t border-slate-100">
+              <div className="flex items-center gap-6 mb-4">
+                <div className="flex items-baseline gap-3">
+                   {selectedProject.originalPrice && (
+                     <span className="text-lg font-bold text-slate-300 line-through">BDT {selectedProject.originalPrice.toLocaleString()}</span>
+                   )}
+                   <span className="text-4xl font-black text-slate-900">BDT {selectedProject.price.toLocaleString()}</span>
+                </div>
+                {selectedProject.priceAdjustmentType === 'reduced' && selectedProject.priceAdjustmentAmount && (
+                  <span className="bg-red-500 text-white px-3 py-1 text-[10px] font-black uppercase rounded shadow-lg shadow-red-100">
+                    Save BDT {selectedProject.priceAdjustmentAmount.toLocaleString()}
+                  </span>
+                )}
+              </div>
+              
+              {/* Fake Countdown area like the screenshot */}
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex items-center justify-between mb-8">
+                 <div className="flex flex-col">
+                   <span className="text-[10px] font-black uppercase text-green-500 italic mb-2">Discount Ends In</span>
+                   <div className="flex gap-4">
+                      {['00', '06', '59', '52'].map((n, i) => (
+                        <div key={i} className="flex flex-col items-center">
+                          <div className="bg-black text-white px-2 py-1 rounded text-lg font-black tracking-widest">{n}</div>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">
+                            {['Days', 'Hours', 'Minutes', 'Seconds'][i]}
+                          </span>
+                        </div>
+                      ))}
+                   </div>
+                 </div>
+                 <div className="text-right">
+                   <div className="flex gap-1 text-[#FFB800] mb-1">
+                     {[1,2,3,4,5].map(s => <svg key={s} className={`w-4 h-4 ${s <= selectedProject.rating ? 'fill-current' : 'text-slate-200'}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
+                   </div>
+                   <span className="text-[10px] font-black uppercase text-slate-400">Read the review</span>
+                   <p className="text-[9px] font-bold text-slate-500 mt-1">Avg Rating: {selectedProject.rating}/5 • Reviews: {selectedProject.reviewCount}</p>
+                 </div>
+              </div>
+
+              <div className="flex gap-4 items-center mb-10">
+                 <div className="flex border border-slate-200 rounded-xl overflow-hidden">
+                    <button className="px-4 py-4 hover:bg-slate-100 transition-colors">－</button>
+                    <input type="number" defaultValue={1} className="w-12 text-center font-black text-sm outline-none bg-white" />
+                    <button className="px-4 py-4 hover:bg-slate-100 transition-colors">＋</button>
+                 </div>
+                 <button 
+                  onClick={() => addToCart(selectedProject)}
+                  className="flex-1 bg-[#8cc63f] hover:brightness-105 text-white py-4 rounded-xl flex items-center justify-center gap-3 shadow-xl shadow-green-100 transition-all font-black uppercase text-xs tracking-widest active:scale-95"
+                 >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" strokeWidth="2.5"/></svg>
+                    Add to Cart
+                 </button>
+              </div>
+
+              {/* Social share icons */}
+              <div className="flex items-center gap-4 text-slate-400 text-xs font-black uppercase tracking-widest mb-10">
+                 <span>Share</span>
+                 <div className="w-8 h-8 rounded-full bg-[#3b5998] flex items-center justify-center text-white cursor-pointer hover:brightness-110 transition-all">f</div>
+                 <div className="w-8 h-8 rounded-full bg-[#1da1f2] flex items-center justify-center text-white cursor-pointer hover:brightness-110 transition-all">𝕏</div>
+              </div>
+
+              {/* Activity stats */}
+              <div className="space-y-2">
+                 <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600">
+                    <span className="text-red-500">🔥 {selectedProject.purchasedRecently || 11} people</span> have purchased this recently
+                 </div>
+                 <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600">
+                    <span className="text-orange-500">{selectedProject.addedToCartRecently || 359} people</span> added this item to cart in last 10 days
+                 </div>
+                 <div className="pt-4 flex flex-col gap-2">
+                    <span className="text-[11px] font-black uppercase text-slate-800">
+                      {selectedProject.stockCount || 13} items in stock in {selectedProject.stockLocation || 'Uttara, Dhaka'}
+                    </span>
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                       <div className="bg-blue-500 h-full rounded-full" style={{ width: '65%' }} />
+                    </div>
+                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Detailed Tabs Area */}
+        <div className="mt-20">
+           <div className="flex border-b border-slate-200 gap-8 mb-10">
+              {['DESCRIPTION', 'PRODUCT DETAILS', 'COMMENTS (1)'].map((tab, idx) => (
+                <button 
+                  key={tab} 
+                  className={`pb-4 text-xs font-black uppercase tracking-widest border-b-4 transition-all ${idx === 0 ? 'border-[#8cc63f] text-black' : 'border-transparent text-slate-400 hover:text-black'}`}
+                >
+                  {tab}
+                </button>
+              ))}
+           </div>
+           
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-20">
+              <div className="space-y-10">
+                 <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
+                    <h3 className="text-xl font-black uppercase tracking-tighter">Features:</h3>
+                    <ol className="space-y-4">
+                       {(selectedProject.features || []).length > 0 ? selectedProject.features?.map((f, i) => (
+                         <li key={i} className="text-sm text-slate-600 flex gap-3">
+                            <span className="font-black text-black">{i + 1}.</span>
+                            {f}
+                         </li>
+                       )) : (
+                         <p className="text-sm text-slate-400">Detailed feature set currently being drafted for this blueprint.</p>
+                       )}
+                    </ol>
+                 </div>
+
+                 <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
+                    <h3 className="text-xl font-black uppercase tracking-tighter">Applications:</h3>
+                    <ol className="space-y-4">
+                       {(selectedProject.applications || []).length > 0 ? selectedProject.applications?.map((a, i) => (
+                         <li key={i} className="text-sm text-slate-600 flex gap-3">
+                            <span className="font-black text-black">{i + 1}.</span>
+                            {a}
+                         </li>
+                       )) : (
+                         <p className="text-sm text-slate-400">Industry-specific application guides available on request.</p>
+                       )}
+                    </ol>
+                 </div>
+              </div>
+
+              <div className="space-y-10">
+                 <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-3xl p-1 shadow-sm overflow-hidden">
+                    <table className="w-full text-xs">
+                       <thead>
+                          <tr className="bg-[#8cc63f] text-white">
+                             <th colSpan={2} className="py-3 px-6 text-center font-black uppercase tracking-widest">General Specifications</th>
+                          </tr>
+                       </thead>
+                       <tbody className="bg-white divide-y divide-slate-100">
+                          {Object.entries(selectedProject.detailedSpecs || {
+                            'Item Type': selectedProject.category,
+                            'Model': selectedProject.name,
+                            'Reference': selectedProject.reference,
+                            'CPU': selectedProject.specs[0] || 'N/A',
+                            'RAM': selectedProject.specs[1] || 'N/A',
+                            'Other Features': selectedProject.specs.slice(2).join(', ') || 'N/A',
+                            'Power': '7W - 25W',
+                            'Operating Temp': '0°C to 35°C',
+                            'Weight (g)': '130g'
+                          }).map(([key, val], i) => (
+                            <tr key={i} className="hover:bg-slate-50 transition-colors">
+                               <td className="py-4 px-6 font-black text-slate-900 w-1/3 bg-slate-50 uppercase tracking-tighter border-r border-slate-100">{key}:</td>
+                               <td className="py-4 px-6 font-bold text-slate-600 uppercase">{val}</td>
+                            </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+
+                 <div className="bg-white border border-slate-100 rounded-3xl p-10 space-y-6">
+                    <h3 className="text-xl font-black uppercase tracking-tighter">Package Includes:</h3>
+                    <ul className="space-y-3">
+                       {(selectedProject.packageIncludes || [
+                         `1 x ${selectedProject.name}`,
+                         '19V Power Supply (45W)',
+                         'Quick Start and Support Guide'
+                       ]).map((item, i) => (
+                         <li key={i} className="text-sm text-slate-600 flex gap-3">
+                            <span className="text-slate-400">✓</span>
+                            {item}
+                         </li>
+                       ))}
+                    </ul>
+                 </div>
+              </div>
+           </div>
+
+           <div className="mt-20 p-10 bg-slate-900 text-white rounded-[40px] text-center space-y-6 shadow-2xl">
+              <h3 className="text-2xl font-black uppercase italic tracking-tighter">Documentation & Resources</h3>
+              <div className="flex flex-wrap justify-center gap-6">
+                 {['Getting Started Guide', 'Hardware Schematics', 'Datasheet PDF', 'Sample Source Code'].map(d => (
+                   <button key={d} className="px-8 py-3 bg-white/10 hover:bg-[#8cc63f] rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10">
+                      {d}
+                   </button>
+                 ))}
+              </div>
+           </div>
+        </div>
+      </div>
+    );
   };
 
   const renderInformation = () => (
@@ -1214,7 +1480,7 @@ const App: React.FC = () => {
 
       <header className="bg-white/90 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50 py-6 px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="cursor-pointer" onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedCategory(null); setAccountSubView('menu'); setCheckoutStep(null); }}>{LOGO_SVG}</div>
+          <div className="cursor-pointer" onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedCategory(null); setAccountSubView('menu'); setCheckoutStep(null); setSelectedProject(null); }}>{LOGO_SVG}</div>
           <div className="flex-1 max-w-xl w-full">
             <input type="text" placeholder="Search blueprints..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-50 rounded-full py-4 px-12 border-2 border-transparent focus:border-[#FFB800] outline-none text-sm font-bold" />
           </div>
@@ -1223,7 +1489,7 @@ const App: React.FC = () => {
               <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth="2.5"/></svg></div>
               <div className="flex flex-col"><span className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">Account</span><span className="text-xs font-black uppercase leading-none group-hover:text-[#FFB800]">{isLoggedIn ? (currentUser?.firstName || 'User') : 'Sign In'}</span></div>
             </div>
-            <div onClick={() => { setCurrentTab(NavigationTab.CART); setCheckoutStep(null); }} className="bg-[#8cc63f] px-6 py-4 rounded-2xl text-white flex items-center gap-4 cursor-pointer hover:shadow-xl transition-all">
+            <div onClick={() => { setCurrentTab(NavigationTab.CART); setCheckoutStep(null); setSelectedProject(null); }} className="bg-[#8cc63f] px-6 py-4 rounded-2xl text-white flex items-center gap-4 cursor-pointer hover:shadow-xl transition-all">
               <div className="relative"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" strokeWidth="2.5"/></svg>{cartCount > 0 && <span className="absolute -top-3 -right-3 bg-red-500 w-5 h-5 text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white">{cartCount}</span>}</div>
               <div className="flex flex-col"><span className="text-[10px] font-black opacity-80 uppercase leading-none mb-1">Cart</span><span className="text-sm font-black leading-none">BDT {cartTotal.toLocaleString()}</span></div>
             </div>
@@ -1232,6 +1498,7 @@ const App: React.FC = () => {
       </header>
 
       {checkoutStep ? renderCheckoutFlow() : (
+        selectedProject ? renderProjectDetails() : 
         currentTab === NavigationTab.HOME ? (
           <div className="max-w-7xl mx-auto w-full px-8 py-12 flex flex-col md:flex-row gap-12">
             <aside className="w-full md:w-72 flex-shrink-0">
@@ -1244,7 +1511,7 @@ const App: React.FC = () => {
               <div className="rounded-[40px] overflow-hidden shadow-2xl"><HeroCarousel /></div>
               <section>
                 <div className="flex items-baseline justify-between mb-8"><h2 className="text-3xl font-black uppercase italic tracking-tighter">{selectedCategory || 'Active Kits'}</h2><span className="text-[10px] font-black text-slate-300 uppercase">{filteredInventory.length} results</span></div>
-                {filteredInventory.length === 0 ? <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] py-40 text-center flex flex-col items-center gap-6"><svg className="w-16 h-16 opacity-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg><p className="text-xl font-black text-slate-200 uppercase">No active blueprints</p></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{filteredInventory.map(p => <ProjectCard key={p.id} project={p} onAddToCart={(proj) => { const exc = cart.find(x => x.id === proj.id); if(exc) setCart(cart.map(x => x.id === proj.id ? {...x, quantity: x.quantity + 1} : x)); else setCart([...cart, {...proj, quantity: 1}]); addNotification(`${proj.name} added.`); }} />)}</div>}
+                {filteredInventory.length === 0 ? <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] py-40 text-center flex flex-col items-center gap-6"><svg className="w-16 h-16 opacity-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg><p className="text-xl font-black text-slate-200 uppercase">No active blueprints</p></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{filteredInventory.map(p => <ProjectCard key={p.id} project={p} onAddToCart={addToCart} onViewDetails={(proj) => { setSelectedProject(proj); setCurrentTab(NavigationTab.PROJECT_DETAILS); window.scrollTo(0,0); }} />)}</div>}
               </section>
             </main>
           </div>
@@ -1295,7 +1562,7 @@ const App: React.FC = () => {
                 )}
               </div>
             ) : null}
-            <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); setCurrentTab(NavigationTab.HOME); }} className="bg-[#4caf50] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Sign Out</button></div>
+            <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); setCurrentTab(NavigationTab.HOME); setSelectedProject(null); }} className="bg-[#4caf50] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Sign Out</button></div>
           </div>
         ) : (
           <div className="max-w-4xl mx-auto py-20 px-8 text-center">

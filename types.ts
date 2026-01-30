@@ -2,18 +2,29 @@
 export interface Project {
   id: string;
   name: string;
+  brand?: string;
   description: string;
+  detailedDescription?: string;
   price: number;
   originalPrice?: number;
   discount?: string;
   category: string;
   image: string;
-  video?: string; // Support for project videos
+  thumbnails?: string[];
+  video?: string;
   specs: string[];
+  detailedSpecs?: Record<string, string>;
+  features?: string[];
+  applications?: string[];
+  packageIncludes?: string[];
   reference: string;
   rating: number;
   reviewCount: number;
   inStock: boolean;
+  stockLocation?: string;
+  stockCount?: number;
+  purchasedRecently?: number;
+  addedToCartRecently?: number;
   // Optional metadata for price state
   priceAdjustmentType?: 'none' | 'reduced' | 'increased';
   priceAdjustmentAmount?: number;
@@ -28,5 +39,6 @@ export enum NavigationTab {
   BROWSE = 'browse',
   DEALS = 'deals',
   CART = 'cart',
-  ACCOUNT = 'account'
+  ACCOUNT = 'account',
+  PROJECT_DETAILS = 'project_details'
 }

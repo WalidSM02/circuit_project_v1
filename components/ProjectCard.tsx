@@ -5,9 +5,10 @@ import { Project } from '../types';
 interface ProjectCardProps {
   project: Project;
   onAddToCart: (p: Project) => void;
+  onViewDetails: (p: Project) => void;
 }
 
-export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onAddToCart }) => {
+export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onAddToCart, onViewDetails }) => {
   const renderStars = (rating: number) => {
     return (
       <div className="flex gap-0.5">
@@ -31,7 +32,10 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onAddToCart }
   return (
     <div className="bg-white border border-gray-100 rounded-lg p-5 flex flex-col items-center text-center shadow-sm hover:shadow-md transition-shadow group h-full">
       {/* Image and Badges */}
-      <div className="relative w-full aspect-square mb-6">
+      <div 
+        className="relative w-full aspect-square mb-6 cursor-pointer overflow-hidden"
+        onClick={() => onViewDetails(project)}
+      >
         {(isReduced || isIncreased) && (
           <div className="absolute top-0 left-0 z-10 flex flex-col gap-1 items-start">
             <span className={`${isReduced ? 'bg-red-500' : 'bg-blue-600'} text-white text-[10px] font-bold px-2 py-1 uppercase tracking-tighter`}>
@@ -45,7 +49,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onAddToCart }
           </div>
         )}
         
-        {/* Video Icon Badge */}
         {project.video && (
           <div className="absolute top-2 right-2 z-10 bg-white/90 p-1.5 rounded-lg shadow-sm">
              <svg className="w-4 h-4 text-[#FFB800]" fill="currentColor" viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
@@ -62,7 +65,10 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onAddToCart }
       {/* Content */}
       <div className="flex-1 flex flex-col items-center w-full">
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">REFERENCE: {project.reference}</p>
-        <h3 className="text-sm font-bold text-slate-800 uppercase line-clamp-2 leading-tight mb-3 min-h-[40px]">
+        <h3 
+          className="text-sm font-bold text-slate-800 uppercase line-clamp-2 leading-tight mb-3 min-h-[40px] cursor-pointer hover:text-[#FFB800] transition-colors"
+          onClick={() => onViewDetails(project)}
+        >
           {project.name}
         </h3>
         
