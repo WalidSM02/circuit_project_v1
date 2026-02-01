@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, CartItem, NavigationTab } from './types';
 import { PROJECTS, SIDEBAR_CATEGORIES, LOGO_SVG } from './constants';
@@ -127,7 +126,7 @@ const App: React.FC = () => {
   
   const [authPersona, setAuthPersona] = useState<'user' | 'admin' | null>(null);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [authStep, setAuthStep] = useState<'persona' | 'form'>('persona');
+  const [authStep, setAuthStep] = useState<'persona' | 'form' | 'verification'>('persona');
   const [isSending, setIsSending] = useState(false);
   
   const [currentTab, setCurrentTab] = useState<NavigationTab>(NavigationTab.HOME);
@@ -182,6 +181,11 @@ const App: React.FC = () => {
 
   const [viewingItemsOrder, setViewingItemsOrder] = useState<Order | null>(null);
   const [notifications, setNotifications] = useState<{id: number, text: string}[]>([]);
+
+  // Verification States
+  const [verificationInput, setVerificationInput] = useState('');
+  const [systemOTP, setSystemOTP] = useState('');
+  const [tempUser, setTempUser] = useState<UserData | null>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -267,14 +271,16 @@ const App: React.FC = () => {
     
     setTimeout(() => {
       const normalizedEmail = email.toLowerCase().trim();
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
       if (authMode === 'signin') {
         const user = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail && u.password === password);
         if (user) {
-          setIsLoggedIn(true);
-          setCurrentUser(user);
-          setShowAuthModal(false);
-          setAuthStep('persona');
-          addNotification(`Welcome back, ${user.firstName}`);
+          setSystemOTP(generatedOtp);
+          setTempUser(user);
+          setAuthStep('verification');
+          alert(`LAB SYSTEM ALERT: Your Protocol Verification Code is ${generatedOtp}`);
+          addNotification("Verification code transmitted to research terminal.");
         } else {
           addNotification("Invalid credentials.");
         }
@@ -294,16 +300,33 @@ const App: React.FC = () => {
             orders: [], 
             reviews: [] 
           };
-          setVerifiedUsers(prev => [...prev, newUser]);
-          setIsLoggedIn(true);
-          setCurrentUser(newUser);
-          setShowAuthModal(false);
-          setAuthStep('persona');
-          addNotification(`Account created! Welcome ${firstName}`);
+          setSystemOTP(generatedOtp);
+          setTempUser(newUser);
+          setAuthStep('verification');
+          alert(`LAB SYSTEM ALERT: Your Initial Handshake Code is ${generatedOtp}`);
+          addNotification("Handshake initialized. Check for protocol code.");
         }
       }
       setIsSending(false);
     }, 800);
+  };
+
+  const handleVerifyCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (verificationInput === systemOTP && tempUser) {
+      if (authMode === 'signup') {
+        setVerifiedUsers(prev => [...prev, tempUser]);
+      }
+      setIsLoggedIn(true);
+      setCurrentUser(tempUser);
+      setShowAuthModal(false);
+      setAuthStep('persona');
+      setTempUser(null);
+      setVerificationInput('');
+      addNotification(`Authorized: Welcome, ${tempUser.firstName}`);
+    } else {
+      addNotification("Handshake Failed: Invalid Verification Code.");
+    }
   };
 
   const handleSaveAddress = (e: React.FormEvent) => {
@@ -683,7 +706,7 @@ const App: React.FC = () => {
                       {selectedProject.stockCount || 13} items in stock in {selectedProject.stockLocation || 'Uttara, Dhaka'}
                     </span>
                     <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                       <div className="bg-blue-500 h-full rounded-full" style={{ width: '65%' }} />
+                       <div className="bg-blue-50 h-full rounded-full" style={{ width: '65%' }} />
                     </div>
                  </div>
               </div>
@@ -1639,30 +1662,65 @@ const App: React.FC = () => {
       {showAuthModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-xl p-4">
           <div className="bg-white w-full max-md rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 p-12 relative flex flex-col max-h-[95vh]">
-            <button onClick={() => setShowAuthModal(false)} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 transition-colors z-10">✕</button>
+            <button onClick={() => setShowAuthModal(false)} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900 transition-colors z-10 font-black">✕</button>
             <div className="flex justify-center mb-8 shrink-0"><div className="scale-75">{LOGO_SVG}</div></div>
             <div className="overflow-y-auto hide-scrollbar">
               {authStep === 'persona' ? (
                 <div className="space-y-4">
-                  <h2 className="text-xl font-black text-center uppercase mb-6 tracking-widest text-slate-900">Access Portal</h2>
-                  <button onClick={() => { setAuthPersona('admin'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-900 text-white rounded-[24px] hover:bg-black transition-colors group"><AdminIconSmall /> <span className="text-xs font-black uppercase tracking-widest group-hover:text-[#FFB800]">Administrator</span></button>
-                  <button onClick={() => { setAuthPersona('user'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-100 rounded-[24px] hover:bg-slate-200 transition-colors group"><UserIconSmall /> <span className="text-xs font-black uppercase tracking-widest text-slate-600 group-hover:text-black">User Account</span></button>
+                  <h2 className="text-xl font-black text-center uppercase mb-6 tracking-widest text-slate-900">Lab Access Hub</h2>
+                  <button onClick={() => { setAuthPersona('admin'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-900 text-white rounded-[24px] hover:bg-black transition-colors group shadow-xl"><AdminIconSmall /> <span className="text-xs font-black uppercase tracking-widest group-hover:text-[#FFB800]">Central Admin</span></button>
+                  <button onClick={() => { setAuthPersona('user'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-100 rounded-[24px] hover:bg-slate-200 transition-colors group shadow-inner"><UserIconSmall /> <span className="text-xs font-black uppercase tracking-widest text-slate-600 group-hover:text-black">Researcher Account</span></button>
                 </div>
-              ) : (
+              ) : authStep === 'form' ? (
                 <div className="space-y-6">
-                  <h2 className="text-xl font-black text-center uppercase mb-8 tracking-widest text-slate-900">{authPersona === 'admin' ? 'Root Authentication' : (authMode === 'signin' ? 'User Entry' : 'Create User Account')}</h2>
+                  <div className="text-center space-y-2">
+                    <h2 className="text-xl font-black uppercase tracking-widest text-slate-900">{authPersona === 'admin' ? 'Root Authentication' : (authMode === 'signin' ? 'Portal Entry' : 'New Lab Member')}</h2>
+                  </div>
                   <form onSubmit={handleAuthSubmit} className="space-y-4">
                     {authPersona === 'user' && authMode === 'signup' && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <input required type="text" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First Name" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
-                        <input required type="text" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last Name" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
-                      </div>
+                      <>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input required type="text" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First Name" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
+                          <input required type="text" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last Name" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
+                        </div>
+                        <input required type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone Number" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800]" />
+                      </>
                     )}
                     <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] transition-all" />
                     <input required type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full px-5 py-4 bg-slate-50 rounded-xl outline-none font-bold border-2 border-transparent focus:border-[#FFB800] transition-all" />
-                    <button type="submit" disabled={isSending} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all shadow-lg mt-4">{isSending ? 'Authenticating...' : 'Authorize'}</button>
+                    <button type="submit" disabled={isSending} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-black transition-all shadow-xl mt-4">{isSending ? 'Transmitting...' : (authMode === 'signin' ? 'Authorize Access' : 'Initialize Account')}</button>
                   </form>
-                  <button onClick={() => setAuthStep('persona')} className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-black transition-colors border-2 border-slate-50 rounded-xl">Back to Roles</button>
+                  {authPersona === 'user' && (
+                    <div className="text-center pt-4">
+                      <button 
+                        onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
+                        className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-colors underline"
+                      >
+                        {authMode === 'signin' ? "Need a researcher account? Join the lab" : "Already registered? Back to sign in"}
+                      </button>
+                    </div>
+                  )}
+                  <button onClick={() => setAuthStep('persona')} className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-black transition-colors border-2 border-slate-50 rounded-xl mt-2">Back to Roles</button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="text-center space-y-2">
+                    <h2 className="text-xl font-black uppercase tracking-widest text-slate-900">Protocol Verification</h2>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Input the 6-digit handshake code sent to your terminal.</p>
+                  </div>
+                  <form onSubmit={handleVerifyCode} className="space-y-4">
+                    <input 
+                      required 
+                      type="text" 
+                      maxLength={6}
+                      value={verificationInput} 
+                      onChange={e => setVerificationInput(e.target.value)} 
+                      placeholder="Enter 6-Digit Code" 
+                      className="w-full px-5 py-6 bg-slate-50 rounded-xl outline-none font-black text-center text-2xl tracking-[0.5em] border-2 border-transparent focus:border-[#FFB800]" 
+                    />
+                    <button type="submit" className="w-full bg-[#FFB800] text-black py-5 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl">Complete Handshake</button>
+                  </form>
+                  <button onClick={() => setAuthStep('form')} className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-black transition-colors">Abort and Restart</button>
                 </div>
               )}
             </div>
@@ -1673,8 +1731,9 @@ const App: React.FC = () => {
       <header className="bg-white/90 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50 py-6 px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="cursor-pointer" onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedCategory(null); setAccountSubView('menu'); setCheckoutStep(null); setSelectedProject(null); }}>{LOGO_SVG}</div>
-          <div className="flex-1 max-w-xl w-full">
-            <input type="text" placeholder="Search blueprints..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-50 rounded-full py-4 px-12 border-2 border-transparent focus:border-[#FFB800] outline-none text-sm font-bold" />
+          <div className="flex-1 max-w-xl w-full relative">
+            <input type="text" placeholder="Search blueprints..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-50 rounded-full py-4 px-12 border-2 border-transparent focus:border-[#FFB800] outline-none text-sm font-bold shadow-inner" />
+            <svg className="w-5 h-5 absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2.5"/></svg>
           </div>
           <div className="flex items-center gap-8">
             <div onClick={() => isLoggedIn ? setCurrentTab(NavigationTab.ACCOUNT) : setShowAuthModal(true)} className="flex items-center gap-3 cursor-pointer group">
@@ -1703,7 +1762,7 @@ const App: React.FC = () => {
               <div className="rounded-[40px] overflow-hidden shadow-2xl"><HeroCarousel /></div>
               <section>
                 <div className="flex items-baseline justify-between mb-8"><h2 className="text-3xl font-black uppercase italic tracking-tighter">{selectedCategory || 'Active Kits'}</h2><span className="text-[10px] font-black text-slate-300 uppercase">{filteredInventory.length} results</span></div>
-                {filteredInventory.length === 0 ? <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] py-40 text-center flex flex-col items-center gap-6"><svg className="w-16 h-16 opacity-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg><p className="text-xl font-black text-slate-200 uppercase">No active blueprints</p></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{filteredInventory.map(p => <ProjectCard key={p.id} project={p} onAddToCart={(proj) => addToCart(proj, 1)} onViewDetails={(proj) => { setSelectedProject(proj); setCurrentTab(NavigationTab.PROJECT_DETAILS); window.scrollTo(0,0); }} />)}</div>}
+                {filteredInventory.length === 0 ? <div className="bg-white border-2 border-dashed border-slate-100 rounded-[40px] py-40 text-center flex flex-col items-center gap-6"><svg className="w-16 h-16 opacity-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 v2M7 7h10" strokeWidth="2.5"/></svg><p className="text-xl font-black text-slate-200 uppercase">No active blueprints</p></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{filteredInventory.map(p => <ProjectCard key={p.id} project={p} onAddToCart={(proj) => addToCart(proj, 1)} onViewDetails={(proj) => { setSelectedProject(proj); setCurrentTab(NavigationTab.PROJECT_DETAILS); window.scrollTo(0,0); }} />)}</div>}
               </section>
             </main>
           </div>
@@ -1723,7 +1782,7 @@ const App: React.FC = () => {
                 <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" strokeWidth="2.5"/></svg>} label="OUT OF STOCK SUBSCRIPTIONS" />
                 {currentUser?.role === 'admin' && (
                   <>
-                    <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeWidth="2.5"/></svg>} label="LAB INVENTORY" onClick={() => setAccountSubView('inventory')} />
+                    <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0 a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 v2M7 7h10" strokeWidth="2.5"/></svg>} label="LAB INVENTORY" onClick={() => setAccountSubView('inventory')} />
                     <AccountCard icon={<svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" strokeWidth="2.5"/></svg>} label="CONFIRMED ORDER STATUS" onClick={() => setAccountSubView('confirmed-orders')} />
                   </>
                 )}
@@ -1754,7 +1813,7 @@ const App: React.FC = () => {
                 )}
               </div>
             ) : null}
-            <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); setCurrentTab(NavigationTab.HOME); setSelectedProject(null); }} className="bg-[#4caf50] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Sign Out</button></div>
+            <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); setCurrentTab(NavigationTab.HOME); setSelectedProject(null); }} className="bg-[#f44336] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Terminate Session</button></div>
           </div>
         ) : (
           <div className="max-w-4xl mx-auto py-20 px-8 text-center">
