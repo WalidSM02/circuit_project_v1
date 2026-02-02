@@ -25,15 +25,18 @@ export interface Project {
   stockCount?: number;
   purchasedRecently?: number;
   addedToCartRecently?: number;
-  // Optional metadata for price state
   priceAdjustmentType?: 'none' | 'reduced' | 'increased';
   priceAdjustmentAmount?: number;
 }
 
 export interface CartItem extends Project {
   quantity: number;
+  // Add this block:
+  options?: {
+    ieee: boolean;
+    pptx: boolean;
+  };
 }
-
 export enum NavigationTab {
   HOME = 'home',
   BROWSE = 'browse',

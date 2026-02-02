@@ -115,7 +115,12 @@ const App: React.FC = () => {
       reviews: []
     }];
   });
-
+// Add this with your other states
+  // --- REVIEW SYSTEM STATE ---
+  const [isWritingReview, setIsWritingReview] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState<Project | null>(null);
+  const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
+  const [viewingReceipt, setViewingReceipt] = useState<Order | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserData | null>(null);
@@ -265,51 +270,56 @@ const App: React.FC = () => {
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 4000);
   };
 
-  const handleAuthSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSending(true);
-    
-    setTimeout(() => {
-      const normalizedEmail = email.toLowerCase().trim();
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+const handleAuthSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSending(true);
 
-      if (authMode === 'signin') {
-        const user = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail && u.password === password);
-        if (user) {
-          setSystemOTP(generatedOtp);
-          setTempUser(user);
-          setAuthStep('verification');
-          alert(`LAB SYSTEM ALERT: Your Protocol Verification Code is ${generatedOtp}`);
-          addNotification("Verification code transmitted to research terminal.");
-        } else {
-          addNotification("Invalid credentials.");
-        }
-      } else {
-        const exists = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-        if (exists) {
-          addNotification("Email already registered.");
-        } else {
-          const newUser: UserData = { 
-            firstName, 
-            lastName, 
-            email: normalizedEmail, 
-            phone, 
-            password, 
-            role: 'user', 
-            addresses: [], 
-            orders: [], 
-            reviews: [] 
-          };
-          setSystemOTP(generatedOtp);
-          setTempUser(newUser);
-          setAuthStep('verification');
-          alert(`LAB SYSTEM ALERT: Your Initial Handshake Code is ${generatedOtp}`);
-          addNotification("Handshake initialized. Check for protocol code.");
-        }
-      }
-      setIsSending(false);
-    }, 800);
-  };
+    setTimeout(() => {
+      const normalizedEmail = email.toLowerCase().trim();
+
+      if (authMode === 'signin') {
+        // --- LOGIN LOGIC ---
+        const user = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail && u.password === password);
+        if (user) {
+          // DIRECTLY LOG IN (No OTP)
+          setIsLoggedIn(true);
+          setCurrentUser(user);
+          setShowAuthModal(false);
+          setAuthStep('persona');
+          addNotification(`Authorized: Welcome, ${user.firstName}`);
+        } else {
+          addNotification("Invalid credentials.");
+        }
+      } else {
+        // --- SIGN UP LOGIC ---
+        const exists = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+        if (exists) {
+          addNotification("Email already registered.");
+        } else {
+          const newUser: UserData = { 
+            firstName, 
+            lastName, 
+            email: normalizedEmail, 
+            phone, 
+            password, 
+            role: 'user', 
+            addresses: [], 
+            orders: [], 
+            reviews: [] 
+          };
+          
+          // DIRECTLY REGISTER AND LOG IN (No OTP)
+          setVerifiedUsers(prev => [...prev, newUser]);
+          setIsLoggedIn(true);
+          setCurrentUser(newUser);
+          setShowAuthModal(false);
+          setAuthStep('persona');
+          addNotification(`Welcome to the Lab, ${firstName}`);
+        }
+      }
+      setIsSending(false);
+    }, 800);
+  };
 
   const handleVerifyCode = (e: React.FormEvent) => {
     e.preventDefault();
@@ -345,6 +355,49 @@ const App: React.FC = () => {
     setVerifiedUsers(prev => prev.map(u => u.email.toLowerCase() === updatedUser.email.toLowerCase() ? updatedUser : u));
     setIsAddingAddress(false);
     setEditingAddress(null);
+  };
+  const handleSubmitReview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !reviewTarget) return;
+
+    // 1. Create the Review Object
+    const newReview: UserReview = {
+      id: `rev-${Date.now()}`,
+      projectId: reviewTarget.id,
+      projectName: reviewTarget.name,
+      rating: reviewForm.rating,
+      comment: reviewForm.comment,
+      date: new Date().toLocaleDateString(),
+      userName: `${currentUser.firstName} ${currentUser.lastName}`
+    };
+
+    // 2. Save to User Profile
+    const updatedUser = {
+      ...currentUser,
+      reviews: [newReview, ...currentUser.reviews]
+    };
+    setCurrentUser(updatedUser);
+    setVerifiedUsers(prev => prev.map(u => u.email === updatedUser.email ? updatedUser : u));
+
+    // 3. Update Global Inventory Stats (Live Rating Calculation)
+    setInventory(prev => prev.map(p => {
+      if (p.id === reviewTarget.id) {
+        const oldCount = p.reviewCount || 0;
+        const oldRating = p.rating || 5;
+        const newCount = oldCount + 1;
+        // Calculate new weighted average
+        const newRating = ((oldRating * oldCount) + reviewForm.rating) / newCount;
+        
+        return { ...p, rating: parseFloat(newRating.toFixed(1)), reviewCount: newCount };
+      }
+      return p;
+    }));
+
+    // 4. Cleanup
+    setIsWritingReview(false);
+    setReviewTarget(null);
+    setReviewForm({ rating: 5, comment: '' });
+    addNotification("Review published! Thank you for your feedback.");
   };
 
   const generateReference = (cat: string) => {
@@ -472,7 +525,7 @@ const App: React.FC = () => {
     setCheckoutStep('info');
   };
 
-  const handleFinalizeOrder = () => {
+const handleFinalizeOrder = () => {
     if (!currentUser || !trxId.trim()) {
       addNotification("Please enter bKash Transaction ID.");
       return;
@@ -481,11 +534,16 @@ const App: React.FC = () => {
     const shippingAddr = currentUser.addresses.find(a => a.id === selectedShippingId);
     const billingAddr = currentUser.addresses.find(a => a.id === selectedBillingId);
 
+    // --- CHANGE STARTS HERE ---
+    const deliveryFee = 0; // Explicitly set to zero
+    const finalTotal = cartTotal + deliveryFee; 
+    // --- CHANGE ENDS HERE ---
+
     const newOrder: Order = {
       id: tempOrderId,
       date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
       items: JSON.parse(JSON.stringify(cart)), 
-      total: cartTotal,
+      total: finalTotal, // Use the total that includes the 0 fee
       status: 'Confirmed',
       trxId: trxId.trim(),
       shippingAddress: shippingAddr,
@@ -529,8 +587,8 @@ const App: React.FC = () => {
     addNotification(`Status changed to ${newStatus}`);
   };
 
-  const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = false) => {
-    // If not forced from the modal, intercept and show the pop-up options
+const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = false) => {
+    // 1. Intercept and show options modal if not forced
     if (!forceComplete) {
       setPendingAddition({ proj, qty });
       setShowCartOptionsModal(true);
@@ -539,14 +597,32 @@ const App: React.FC = () => {
       return;
     }
 
+    // 2. Prepare the options object
+    const selectedOptions = {
+      ieee: optionIEEE,
+      pptx: optionPPTX
+    };
+
     const existing = cart.find(x => x.id === proj.id);
-    // Note: We could attach the IEEE/PPTX options to the item here, but as per user request
-    // we are just showing the popup and the WhatsApp message logic.
+    
     if (existing) {
-      setCart(cart.map(x => x.id === proj.id ? { ...x, quantity: x.quantity + qty } : x));
+      // Note: In a complex app, items with different options should be separate rows. 
+      // For now, we merge and update the options to the latest selection.
+      setCart(cart.map(x => x.id === proj.id ? { 
+        ...x, 
+        quantity: x.quantity + qty,
+        // Update options to the newest selection
+        options: selectedOptions 
+      } : x));
     } else {
-      setCart([...cart, { ...proj, quantity: qty }]);
+      setCart([...cart, { 
+        ...proj, 
+        quantity: qty,
+        // Save the options here
+        options: selectedOptions 
+      }]);
     }
+    
     addNotification(`${proj.name} added to cart.`);
     setShowCartOptionsModal(false);
     setPendingAddition(null);
@@ -823,6 +899,252 @@ const App: React.FC = () => {
                  </div>
               )}
            </div>
+        </div>
+      </div>
+    );
+  };
+  const renderReviewsManager = () => {
+    // Logic: Find all items purchased -> Filter out ones already reviewed
+    const allPurchasedItems = currentUser?.orders.flatMap(o => o.items) || [];
+    // Remove duplicates (if bought same item twice)
+    const uniquePurchased = Array.from(new Map(allPurchasedItems.map(item => [item.id, item])).values());
+    const reviewedIds = new Set(currentUser?.reviews.map(r => r.projectId));
+    
+    const pendingReviews = uniquePurchased.filter(p => !reviewedIds.has(p.id));
+
+    return (
+      <div className="max-w-5xl mx-auto py-12 px-6">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-12">
+           <button onClick={() => setAccountSubView('menu')} className="text-slate-400 hover:text-black">
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+           </button>
+           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-widest">My Reviews</h1>
+        </div>
+
+        {/* SECTION 1: PENDING REVIEWS */}
+        <div className="mb-16">
+          <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-4">Waiting for Feedback ({pendingReviews.length})</h3>
+          
+          {pendingReviews.length === 0 ? (
+            <div className="p-10 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+               <p className="text-xs font-black text-slate-400 uppercase">You have reviewed all your purchases.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {pendingReviews.map(item => (
+                <div key={item.id} className="bg-white p-6 rounded-3xl border border-slate-100 flex items-center gap-6 hover:shadow-lg transition-all group">
+                   <img src={item.image} alt={item.name} className="w-20 h-20 object-contain mix-blend-multiply" />
+                   <div className="flex-1">
+                      <h4 className="text-sm font-black text-slate-900 uppercase mb-1">{item.name}</h4>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-4">{item.category}</p>
+                      <button 
+                        onClick={() => { setReviewTarget(item); setIsWritingReview(true); }}
+                        className="bg-black text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black transition-colors"
+                      >
+                        Rate Product
+                      </button>
+                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* SECTION 2: PAST REVIEWS */}
+        <div>
+           <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-4">History</h3>
+           <div className="space-y-4">
+             {currentUser?.reviews.length === 0 ? (
+                <p className="text-xs font-bold text-slate-300 uppercase">No reviews history found.</p>
+             ) : (
+                currentUser?.reviews.map(r => (
+                  <div key={r.id} className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                     <div className="flex justify-between items-start mb-2">
+                        <span className="text-xs font-black text-slate-900 uppercase">{r.projectName}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{r.date}</span>
+                     </div>
+                     <div className="flex gap-1 text-[#FFB800] mb-3">
+                        {[1,2,3,4,5].map(s => (
+                          <svg key={s} className={`w-3 h-3 ${s <= r.rating ? 'fill-current' : 'text-slate-200'}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                        ))}
+                     </div>
+                     <p className="text-xs text-slate-600 italic">"{r.comment}"</p>
+                  </div>
+                ))
+             )}
+           </div>
+        </div>
+
+        {/* --- MODAL FOR WRITING REVIEW --- */}
+        {isWritingReview && reviewTarget && (
+          <div className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+             <div className="bg-white w-full max-w-md rounded-[32px] overflow-hidden animate-in zoom-in-95 shadow-2xl">
+                <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-center">
+                   <div>
+                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reviewing</span>
+                     <h3 className="text-sm font-black text-slate-900 uppercase">{reviewTarget.name}</h3>
+                   </div>
+                   <button onClick={() => setIsWritingReview(false)} className="text-slate-400 hover:text-red-500 font-black">✕</button>
+                </div>
+                
+                <form onSubmit={handleSubmitReview} className="p-8 space-y-6">
+                   {/* Star Rating Input */}
+                   <div className="text-center">
+                      <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Rate Satisfaction</span>
+                      <div className="flex justify-center gap-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setReviewForm({ ...reviewForm, rating: star })}
+                            className="transition-transform hover:scale-110 active:scale-95 focus:outline-none"
+                          >
+                            <svg 
+                              className={`w-10 h-10 ${star <= reviewForm.rating ? 'text-[#FFB800] fill-current' : 'text-slate-200'}`} 
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" strokeWidth="1" stroke="currentColor"/>
+                            </svg>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs font-bold text-slate-900 mt-2 uppercase">
+                        {reviewForm.rating === 5 ? "Excellent!" : reviewForm.rating === 1 ? "Poor" : `${reviewForm.rating} Stars`}
+                      </p>
+                   </div>
+
+                   {/* Comment Input */}
+                   <div>
+                      <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Public Comment</span>
+                      <textarea 
+                        required
+                        rows={4}
+                        value={reviewForm.comment}
+                        onChange={(e) => setReviewForm({...reviewForm, comment: e.target.value})}
+                        className="w-full bg-slate-50 border-2 border-transparent focus:border-[#FFB800] rounded-2xl p-4 text-sm font-bold text-slate-900 outline-none resize-none placeholder:text-slate-300"
+                        placeholder="Share your experience with this kit..."
+                      />
+                   </div>
+
+                   <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-[#FFB800] hover:text-black transition-all shadow-xl">
+                      Submit Review
+                   </button>
+                </form>
+             </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+  const renderReceipt = () => {
+    if (!viewingReceipt) return null;
+
+    return (
+      <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+        <div className="bg-white w-full max-w-xl rounded-[20px] shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh]">
+          
+          {/* --- RECEIPT HEADER --- */}
+          <div className="bg-slate-900 p-8 text-white flex justify-between items-start">
+            <div>
+              <div className="scale-75 origin-top-left mb-2">{LOGO_SVG}</div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Official Payment Receipt</p>
+            </div>
+            <div className="text-right">
+              <h2 className="text-xl font-black uppercase tracking-widest">Paid</h2>
+              <p className="text-xs font-mono text-slate-400 mt-1">#{viewingReceipt.id}</p>
+              <p className="text-[10px] font-bold text-slate-500 mt-1">{viewingReceipt.date}</p>
+            </div>
+          </div>
+
+          {/* --- SCROLLABLE CONTENT --- */}
+          <div className="p-8 overflow-y-auto hide-scrollbar space-y-8">
+            
+            {/* Customer & Shipping Info */}
+            <div className="grid grid-cols-2 gap-8 pb-8 border-b border-slate-100">
+              <div>
+                <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Billed To</span>
+                <p className="text-xs font-bold text-slate-900 uppercase">{viewingReceipt.userName}</p>
+                <p className="text-xs text-slate-500">{viewingReceipt.userPhone}</p>
+                <p className="text-xs text-slate-500">{viewingReceipt.userEmail}</p>
+              </div>
+              <div className="text-right">
+                <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Shipped To</span>
+                {viewingReceipt.shippingAddress ? (
+                  <>
+                    <p className="text-xs font-bold text-slate-900 uppercase">{viewingReceipt.shippingAddress.street}</p>
+                    <p className="text-xs text-slate-500 uppercase">{viewingReceipt.shippingAddress.city}, {viewingReceipt.shippingAddress.zip}</p>
+                    <p className="text-xs text-slate-500 uppercase">{viewingReceipt.shippingAddress.country}</p>
+                  </>
+                ) : <p className="text-xs text-slate-400 italic">Digital Delivery</p>}
+              </div>
+            </div>
+
+            {/* Line Items */}
+            <div>
+              <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Itemized Purchase List</span>
+              <div className="space-y-3">
+                {viewingReceipt.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-start text-xs border-b border-dashed border-slate-100 pb-3 last:border-0">
+                    <div>
+                      <span className="font-bold text-slate-900 uppercase">
+                        {idx + 1}. {item.name} <span className="text-slate-400">x{item.quantity}</span>
+                      </span>
+                      <p className="text-[10px] text-slate-400 mt-1 uppercase">{item.category}</p>
+                      
+                      {/* Badge for IEEE / PPTX */}
+                      {(item.options?.ieee || item.options?.pptx) && (
+                        <div className="flex gap-2 mt-1.5">
+                          {item.options.ieee && <span className="text-[8px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-black tracking-wider">IEEE Report</span>}
+                          {item.options.pptx && <span className="text-[8px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded uppercase font-black tracking-wider">PPTX Slides</span>}
+                        </div>
+                      )}
+                    </div>
+                    <span className="font-bold text-slate-900">BDT {(item.price * item.quantity).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Financial Summary */}
+            <div className="bg-slate-50 p-6 rounded-xl space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="font-bold text-slate-500 uppercase">Subtotal</span>
+                <span className="font-bold text-slate-900">BDT {viewingReceipt.total.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="font-bold text-slate-500 uppercase">Delivery Fees</span>
+                <span className="font-black text-green-600 uppercase">Free</span>
+              </div>
+              <div className="flex justify-between text-sm pt-3 border-t border-slate-200 mt-2">
+                <span className="font-black text-slate-900 uppercase">Total Paid</span>
+                <span className="font-black text-slate-900">BDT {viewingReceipt.total.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Payment Details */}
+            <div className="border border-slate-100 rounded-xl p-4 flex items-center gap-4">
+               <div className="w-10 h-10 bg-pink-50 rounded-full flex items-center justify-center text-pink-600">
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2"/></svg>
+               </div>
+               <div>
+                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Payment Method</p>
+                 <p className="text-xs font-bold text-slate-900 uppercase">bKash Mobile Money</p>
+                 <p className="text-[10px] font-mono text-slate-500 mt-0.5">TRX ID: {viewingReceipt.trxId}</p>
+               </div>
+            </div>
+
+          </div>
+
+          {/* --- FOOTER / ACTIONS --- */}
+          <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-4">
+             <button onClick={() => window.print()} className="flex-1 py-4 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-slate-900 hover:text-slate-900 transition-all text-slate-400">
+               Print / Save PDF
+             </button>
+             <button onClick={() => setViewingReceipt(null)} className="flex-1 py-4 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black transition-all">
+               Close Receipt
+             </button>
+          </div>
         </div>
       </div>
     );
@@ -1314,20 +1636,38 @@ const App: React.FC = () => {
                </div>
                <div className="p-8 overflow-y-auto hide-scrollbar">
                  <div className="space-y-4">
-                    {viewingItemsOrder.items.map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-6 p-5 bg-slate-50 rounded-[28px] border border-slate-100 hover:border-[#FFB800] transition-colors group">
-                        <img src={item.image} className="w-20 h-20 object-contain mix-blend-multiply bg-white rounded-2xl p-2 border border-slate-100 group-hover:scale-105 transition-transform" />
-                        <div className="flex-1">
-                          <h4 className="text-sm font-black text-slate-900 uppercase">{item.name}</h4>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{item.category} • {item.reference}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-black text-slate-300 uppercase tracking-widest mb-1">Quantity</p>
-                          <p className="text-lg font-black text-slate-900">x{item.quantity}</p>
-                          <p className="text-[10px] font-black text-green-600 uppercase mt-1">BDT {(item.price * item.quantity).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    ))}
+{viewingItemsOrder.items.map((item, idx) => (
+  <div key={idx} className="flex items-center gap-6 p-5 bg-slate-50 rounded-[28px] border border-slate-100 hover:border-[#FFB800] transition-colors group">
+    <img src={item.image} className="w-20 h-20 object-contain mix-blend-multiply bg-white rounded-2xl p-2 border border-slate-100 group-hover:scale-105 transition-transform" />
+    <div className="flex-1">
+      <h4 className="text-sm font-black text-slate-900 uppercase">{item.name}</h4>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{item.category} • {item.reference}</p>
+      
+      {/* --- NEW CODE: DOCUMENTATION BADGES --- */}
+      {(item.options?.ieee || item.options?.pptx) && (
+        <div className="flex gap-2 mt-3">
+          {item.options.ieee && (
+            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-wider border border-blue-200 flex items-center gap-1">
+              📄 IEEE Report
+            </span>
+          )}
+          {item.options.pptx && (
+            <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-wider border border-orange-200 flex items-center gap-1">
+              📊 PPTX Slide
+            </span>
+          )}
+        </div>
+      )}
+      {/* -------------------------------------- */}
+
+    </div>
+    <div className="text-right">
+      <p className="text-xs font-black text-slate-300 uppercase tracking-widest mb-1">Quantity</p>
+      <p className="text-lg font-black text-slate-900">x{item.quantity}</p>
+      <p className="text-[10px] font-black text-green-600 uppercase mt-1">BDT {(item.price * item.quantity).toLocaleString()}</p>
+    </div>
+  </div>
+))}
                  </div>
                </div>
                <div className="p-10 border-t border-slate-100 bg-white flex justify-between items-center shrink-0">
@@ -1435,11 +1775,12 @@ const App: React.FC = () => {
     );
   };
 
-  const renderCheckoutFlow = () => {
+const renderCheckoutFlow = () => {
     if (!checkoutStep) return null;
 
     return (
       <div className="max-w-4xl mx-auto py-12 px-8">
+        {/* PROGRESS BAR */}
         <div className="flex items-center justify-between mb-16 relative">
           <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-200 -z-10" />
           {[
@@ -1455,6 +1796,7 @@ const App: React.FC = () => {
           ))}
         </div>
 
+        {/* STEP 1: USER INFO */}
         {checkoutStep === 'info' && (
           <div className="bg-white p-12 rounded-[40px] shadow-2xl animate-in fade-in slide-in-from-bottom-4">
             <h2 className="text-2xl font-black uppercase tracking-widest mb-10 text-slate-900 text-center">Review Profile Information</h2>
@@ -1479,65 +1821,187 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* STEP 2: ADDRESS */}
         {checkoutStep === 'address' && (
           <div className="bg-white p-12 rounded-[40px] shadow-2xl animate-in fade-in slide-in-from-bottom-4">
-            <h2 className="text-2xl font-black uppercase tracking-widest mb-4 text-slate-900 text-center">Deployment Destination</h2>
-            <p className="text-center text-slate-400 text-xs font-bold uppercase tracking-widest mb-10">Select logistics coordinates</p>
-            
-            <div className="space-y-12">
-              <section>
+            <h2 className="text-2xl font-black uppercase tracking-widest mb-4 text-slate-900 text-center">
+              Delivery Point
+            </h2>
+            <p className="text-center text-slate-400 text-xs font-bold uppercase tracking-widest mb-10">
+              Select where to ship your kit
+            </p>
+
+            {/* --- INLINE ADD ADDRESS FORM --- */}
+            {isAddingAddress ? (
+              <div className="bg-slate-50 p-8 rounded-3xl border-2 border-slate-100 mb-8 animate-in zoom-in-95">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Shipping Target</h3>
-                  <button onClick={() => { setAccountSubView('addresses'); setCheckoutStep(null); setCurrentTab(NavigationTab.ACCOUNT); }} className="text-[10px] font-black text-[#FFB800] uppercase underline">+ Add New</button>
+                  <h3 className="text-sm font-black uppercase tracking-widest">New Delivery Location</h3>
+                  <button onClick={() => setIsAddingAddress(false)} className="text-slate-400 hover:text-red-500 font-bold">Cancel</button>
                 </div>
+                
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!currentUser) return;
+                  
+                  // 1. Generate ID and New Address Object
+                  const newId = `addr-${Date.now()}`;
+                  const newAddress = { ...addressForm, id: newId } as UserAddress;
+                  
+                  // 2. Update User Data Manually (Replicating handleSaveAddress logic)
+                  const updatedAddresses = [...currentUser.addresses, newAddress];
+                  const updatedUser = { ...currentUser, addresses: updatedAddresses };
+                  
+                  setCurrentUser(updatedUser);
+                  setVerifiedUsers(prev => prev.map(u => u.email.toLowerCase() === updatedUser.email.toLowerCase() ? updatedUser : u));
+                  
+                  // 3. AUTO-SELECT THE NEW ADDRESS (Fixes the "Proceed" button issue)
+                  setSelectedShippingId(newId);
+                  setSelectedBillingId(newId);
+                  
+                  // 4. Close Form
+                  setIsAddingAddress(false);
+                  addNotification("Address Saved & Selected");
+                }} className="space-y-4">
+                
+                   {/* LABEL FIELD */}
+                   <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Label</label>
+                      <select 
+                        value={addressForm.type} 
+                        onChange={e => setAddressForm({...addressForm, type: e.target.value as any})}
+                        style={{ color: 'white', backgroundColor: '#0f172a' }} // Force colors
+                        className="w-full px-4 py-3 rounded-xl border border-slate-700 font-bold text-sm focus:border-[#FFB800] outline-none"
+                      >
+                        <option value="Home">Home</option>
+                        <option value="Billing">Office</option>
+                        <option value="Shipping">Dormitory</option>
+                      </select>
+                   </div>
+
+                   {/* STREET & CITY */}
+                   <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Street</label>
+                        <input 
+                          required 
+                          placeholder="House/Road No." 
+                          value={addressForm.street} 
+                          onChange={e => setAddressForm({...addressForm, street: e.target.value})} 
+                          style={{ color: '#ffffff' }} // FORCED WHITE TEXT
+                          className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-slate-900 font-bold text-sm focus:border-[#FFB800] outline-none placeholder:text-slate-500" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">City</label>
+                        <input 
+                          required 
+                          placeholder="Dhaka, etc." 
+                          value={addressForm.city} 
+                          onChange={e => setAddressForm({...addressForm, city: e.target.value})} 
+                          style={{ color: '#ffffff' }} // FORCED WHITE TEXT
+                          className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-slate-900 font-bold text-sm focus:border-[#FFB800] outline-none placeholder:text-slate-500" 
+                        />
+                      </div>
+                   </div>
+
+                   {/* ZIP & COUNTRY */}
+                   <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">ZIP Code</label>
+                        <input 
+                          required 
+                          placeholder="1230" 
+                          value={addressForm.zip} 
+                          onChange={e => setAddressForm({...addressForm, zip: e.target.value})} 
+                          style={{ color: '#ffffff' }} // FORCED WHITE TEXT
+                          className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-slate-900 font-bold text-sm focus:border-[#FFB800] outline-none placeholder:text-slate-500" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Country</label>
+                        <input 
+                          readOnly 
+                          value="Bangladesh" 
+                          style={{ color: '#94a3b8' }} 
+                          className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-slate-800 font-bold text-sm outline-none" 
+                        />
+                      </div>
+                   </div>
+                   <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-[#8cc63f] hover:text-black transition-all">Save & Use This Address</button>
+                </form>
+              </div>
+            ) : (
+              /* --- ADDRESS LIST --- */
+              <div className="space-y-4 mb-12">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {currentUser?.addresses.map(addr => (
                     <button 
                       key={addr.id} 
-                      onClick={() => setSelectedShippingId(addr.id)}
-                      className={`p-6 rounded-3xl border-2 text-left transition-all relative ${selectedShippingId === addr.id ? 'border-[#FFB800] bg-orange-50/30' : 'border-slate-100 hover:border-slate-200'}`}
+                      onClick={() => {
+                        setSelectedShippingId(addr.id);
+                        setSelectedBillingId(addr.id);
+                      }}
+                      className={`p-6 rounded-3xl border-2 text-left transition-all relative group 
+                        ${selectedShippingId === addr.id 
+                          ? 'bg-black border-[#FFB800] shadow-xl' 
+                          : 'bg-slate-900 border-transparent hover:border-slate-700'
+                        }`}
                     >
-                      <span className="block text-[9px] font-black uppercase text-slate-300 mb-2">{addr.type} Target</span>
-                      <p className="text-xs font-black text-slate-900 uppercase">{addr.street}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">{addr.city}, {addr.zip}</p>
+                      <div className="flex justify-between items-start mb-2">
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${selectedShippingId === addr.id ? 'text-[#FFB800]' : 'text-slate-400'}`}>
+                          {addr.type}
+                        </span>
+                        
+                        {selectedShippingId === addr.id && (
+                          <div className="w-4 h-4 bg-[#FFB800] rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* WHITE TEXT FOR ADDRESS DETAILS */}
+                      <p className="text-xs font-black text-white uppercase truncate mb-1">
+                        {addr.street}
+                      </p>
+                      <p className="text-[10px] font-bold text-slate-300 uppercase">
+                        {addr.city}, {addr.zip}
+                      </p>
                     </button>
                   ))}
+                  
+                  {/* ADD NEW BUTTON */}
+                  <button 
+                    onClick={() => {
+                      setIsAddingAddress(true);
+                      setEditingAddress(null);
+                      setAddressForm({ type: 'Home', street: '', city: '', zip: '', country: 'Bangladesh' });
+                    }}
+                    className="p-6 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-slate-400 hover:text-slate-600 transition-all"
+                  >
+                    <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-xl font-black">+</div>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Add New Address</span>
+                  </button>
                 </div>
-              </section>
+              </div>
+            )}
 
-              <section>
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Billing Registry</h3>
-                  <button onClick={() => setSelectedBillingId(selectedShippingId)} className="text-[10px] font-black text-slate-900 uppercase underline">Same as Shipping</button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {currentUser?.addresses.map(addr => (
-                    <button 
-                      key={addr.id} 
-                      onClick={() => setSelectedBillingId(addr.id)}
-                      className={`p-6 rounded-3xl border-2 text-left transition-all relative ${selectedBillingId === addr.id ? 'border-[#FFB800] bg-orange-50/30' : 'border-slate-100 hover:border-slate-200'}`}
-                    >
-                      <span className="block text-[9px] font-black uppercase text-slate-300 mb-2">{addr.type} Target</span>
-                      <p className="text-xs font-black text-slate-900 uppercase">{addr.street}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">{addr.city}, {addr.zip}</p>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <div className="flex flex-col md:flex-row gap-4 mt-16">
-              <button onClick={() => setCheckoutStep('info')} className="flex-1 py-5 rounded-2xl border-2 border-slate-100 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors">Back to Info</button>
+            <div className="flex flex-col md:flex-row gap-4">
+              <button onClick={() => setCheckoutStep('info')} className="flex-1 py-5 rounded-2xl border-2 border-slate-100 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors">
+                Back
+              </button>
               <button 
                 onClick={() => {
-                  if (!selectedShippingId || !selectedBillingId) {
-                    addNotification("Please select both target addresses.");
+                  if (!selectedShippingId) {
+                    addNotification("Please select a delivery address.");
                     return;
                   }
+                  if (!selectedBillingId) setSelectedBillingId(selectedShippingId);
+                  
                   setTempOrderId(`CP-${Math.random().toString(36).substr(2, 6).toUpperCase()}`);
                   setCheckoutStep('payment');
                 }} 
-                className="flex-1 py-5 rounded-2xl bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black transition-all"
+                // BUTTON ACTIVATION LOGIC
+                className={`flex-1 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl ${selectedShippingId ? 'bg-black text-white hover:bg-[#FFB800] hover:text-black cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
               >
                 Proceed to Payment
               </button>
@@ -1545,6 +2009,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* STEP 3: PAYMENT */}
         {checkoutStep === 'payment' && (
           <div className="bg-white p-12 rounded-[40px] shadow-2xl animate-in fade-in slide-in-from-bottom-4 flex flex-col items-center">
             <div className="bg-[#D12053] text-white px-10 py-4 rounded-3xl font-black text-xl mb-12 shadow-xl shadow-pink-100">bKash Portal</div>
@@ -1556,8 +2021,18 @@ const App: React.FC = () => {
                   <p className="text-3xl font-black text-pink-600 tracking-wider">01768-466333</p>
                 </div>
                 <div className="pt-6 border-t border-slate-200">
-                  <span className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Payment Amount</span>
-                  <p className="text-2xl font-black text-slate-900">BDT {cartTotal.toLocaleString()}</p>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Subtotal</span>
+                    <span className="text-sm font-bold text-slate-900">BDT {cartTotal.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Delivery Fee</span>
+                    <span className="text-sm font-bold text-green-600 uppercase">Free</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                    <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Total Payable</span>
+                    <p className="text-2xl font-black text-slate-900">BDT {cartTotal.toLocaleString()}</p>
+                  </div>
                 </div>
               </div>
 
@@ -1787,7 +2262,7 @@ const App: React.FC = () => {
                   </>
                 )}
               </div>
-            ) : accountSubView === 'information' ? renderInformation() : accountSubView === 'addresses' ? renderAddressesManager() : accountSubView === 'inventory' ? renderInventoryManager() : accountSubView === 'confirmed-orders' ? renderConfirmedOrdersManager() : accountSubView === 'orders' ? (
+            ) : accountSubView === 'information' ? renderInformation() : accountSubView === 'addresses' ? renderAddressesManager() : accountSubView === 'inventory' ? renderInventoryManager() : accountSubView === 'confirmed-orders' ? renderConfirmedOrdersManager() : accountSubView === 'reviews' ? renderReviewsManager() :  accountSubView === 'orders' ? (
               <div className="max-w-4xl mx-auto py-12 px-6">
                 <div className="flex items-center gap-4 mb-10">
                   <button onClick={() => setAccountSubView('menu')} className="text-slate-400 hover:text-black">
@@ -1797,18 +2272,33 @@ const App: React.FC = () => {
                 </div>
                 {(!currentUser?.orders || currentUser.orders.length === 0) ? <p className="text-center text-slate-300 font-black uppercase py-20">No orders found</p> : (
                   <div className="space-y-6">
-                    {currentUser.orders.map(o => (
-                      <div key={o.id} className="bg-white border border-slate-100 rounded-3xl p-8 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="flex-1">
-                          <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">ID: {o.id}</span>
-                          <p className="text-sm font-black text-slate-900">{o.date}</p>
-                          <p className="text-xs font-bold text-slate-500 mt-2 uppercase">Status: {o.status}</p>
-                        </div>
-                        <div className="text-right">
-                           <span className="text-lg font-black text-slate-900">BDT {o.total.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
+{currentUser.orders.map(o => (
+  <div key={o.id} className="bg-white border border-slate-100 rounded-3xl p-8 flex flex-col md:flex-row justify-between items-center gap-6 hover:border-[#FFB800] transition-colors group">
+    <div className="flex-1">
+      <div className="flex items-center gap-3 mb-2">
+        <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider">
+          {o.id}
+        </span>
+        <span className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${o.status === 'Confirmed' ? 'bg-blue-100 text-blue-600' : o.status === 'Shipped' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+          {o.status}
+        </span>
+      </div>
+      <p className="text-sm font-black text-slate-900">{o.date}</p>
+      <p className="text-xs font-bold text-slate-400 mt-1 uppercase">{o.items.length} Items • BDT {o.total.toLocaleString()}</p>
+    </div>
+    
+    <div className="flex items-center gap-4">
+      {/* THE NEW RECEIPT BUTTON */}
+      <button 
+        onClick={() => setViewingReceipt(o)}
+        className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black transition-all shadow-lg active:scale-95 flex items-center gap-2"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeWidth="2"/></svg>
+        Receipt
+      </button>
+    </div>
+  </div>
+))}
                   </div>
                 )}
               </div>
@@ -1830,8 +2320,56 @@ const App: React.FC = () => {
           </div>
         )
       )}
-      <footer className="bg-slate-900 text-white py-20 px-10 mt-auto"><div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-12"><div>{LOGO_SVG}<p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-6">© 2025 Circuit Projects Lab. Root Access Authorized.</p></div></div></footer>
-    </div>
+      {renderReceipt()}
+     <footer className="bg-slate-900 text-white py-20 px-8 mt-auto border-t border-slate-800">
+        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row justify-between gap-16">
+          
+          {/* Left Side: Logo & Copyright */}
+          <div className="max-w-xs">
+             <div className="scale-100 origin-left mb-6">{LOGO_SVG}</div>
+             <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest leading-relaxed">
+               © 2025 Circuit Projects Lab.<br/>Root Access Authorized.
+             </p>
+          </div>
+
+          {/* Right Side: Contact Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-24">
+            
+            {/* Column 1: Services */}
+            <div className="space-y-8">
+               <div>
+                  <h4 className="text-[#FFB800] text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-[#FFB800] rounded-full"></span>
+                    IEEE & PPTX Files
+                  </h4>
+                  <p className="text-xl font-black text-slate-200 tracking-tight">01788-582369</p>
+               </div>
+               
+               <div>
+                  <h4 className="text-[#FFB800] text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-[#FFB800] rounded-full"></span>
+                    3D Print, Fashion & Hobbies
+                  </h4>
+                  <p className="text-xl font-black text-slate-200 tracking-tight">01788-582369</p>
+               </div>
+            </div>
+
+            {/* Column 2: Logistics */}
+            <div>
+               <h4 className="text-[#FFB800] text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-[#FFB800] rounded-full"></span>
+                  Delivery Contacts
+               </h4>
+               <div className="space-y-2">
+                 <p className="text-xl font-black text-slate-200 tracking-tight">01317-389344(Primary)</p>
+                 <p className="text-xl font-black text-slate-200 tracking-tight">01601-582379</p>
+               </div>
+            </div>
+
+          </div>
+        </div>
+      </footer>
+    </div> // This closes the main container div
   );
 };
 
