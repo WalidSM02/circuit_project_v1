@@ -2340,7 +2340,7 @@ const renderCheckoutFlow = () => {
                <div>
                   <h4 className="text-[#FFB800] text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2">
                     <span className="w-2 h-2 bg-[#FFB800] rounded-full"></span>
-                    IEEE & PPTX Files
+                    IEEE & PPTX Files (Provide ORDER ID)
                   </h4>
                   <p className="text-xl font-black text-slate-200 tracking-tight">01788-582369</p>
                </div>
