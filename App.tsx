@@ -122,8 +122,16 @@ const App: React.FC = () => {
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
   const [viewingReceipt, setViewingReceipt] = useState<Order | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserData | null>(null);
+  // --- PERSISTENCE UPGRADE ---
+  // Initialize state by checking localStorage first
+  const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
+    const savedSession = localStorage.getItem('cp_active_session');
+    return savedSession ? JSON.parse(savedSession) : null;
+  });
+
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return !!localStorage.getItem('cp_active_session');
+  });
   const [showAuthModal, setShowAuthModal] = useState(false);
   
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -263,6 +271,18 @@ const App: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+  // --- SESSION SYNC ---
+  // Automatically save the logged-in user to storage whenever data changes
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('cp_active_session', JSON.stringify(currentUser));
+      setIsLoggedIn(true);
+    } else {
+      // If user logs out (currentUser becomes null), clear the storage
+      localStorage.removeItem('cp_active_session');
+      setIsLoggedIn(false);
+    }
+  }, [currentUser]);
 
   const addNotification = (text: string) => {
     const id = Date.now();
