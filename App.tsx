@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, CartItem, NavigationTab } from './types';
 import { PROJECTS, SIDEBAR_CATEGORIES, LOGO_SVG } from './constants';
@@ -241,6 +242,8 @@ const App: React.FC = () => {
 
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  const deliveryFee = 0;
+  const grandTotal = cartTotal + deliveryFee;
 
   const filteredInventory = inventory.filter(p => {
     const matchesCategory = !selectedCategory || p.category === selectedCategory;
@@ -485,7 +488,7 @@ const App: React.FC = () => {
       id: tempOrderId,
       date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
       items: JSON.parse(JSON.stringify(cart)), 
-      total: cartTotal,
+      total: grandTotal,
       status: 'Confirmed',
       trxId: trxId.trim(),
       shippingAddress: shippingAddr,
@@ -1158,7 +1161,7 @@ const App: React.FC = () => {
                     <label className="block text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">Total Reviewers</label>
                     <input 
                       type="number" 
-                      min="0"
+                      min="0" 
                       placeholder="0"
                       value={projectForm.reviewCount ?? 0} 
                       onChange={e => setProjectForm({...projectForm, reviewCount: Number(e.target.value)})} 
@@ -1551,13 +1554,21 @@ const App: React.FC = () => {
             
             <div className="w-full max-sm space-y-8">
               <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-100 space-y-6">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Subtotal:</span>
+                  <span className="text-sm font-black text-slate-900">BDT {cartTotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Delivery Fee:</span>
+                  <span className="text-sm font-black text-green-600">0 TK</span>
+                </div>
                 <div>
                   <span className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">bKash Account (Personal)</span>
                   <p className="text-3xl font-black text-pink-600 tracking-wider">01768-466333</p>
                 </div>
                 <div className="pt-6 border-t border-slate-200">
-                  <span className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Payment Amount</span>
-                  <p className="text-2xl font-black text-slate-900">BDT {cartTotal.toLocaleString()}</p>
+                  <span className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Final Grand Total</span>
+                  <p className="text-2xl font-black text-slate-900">BDT {grandTotal.toLocaleString()}</p>
                 </div>
               </div>
 
@@ -1822,7 +1833,20 @@ const App: React.FC = () => {
               <div className="space-y-4">
                 {cart.map(item => <div key={item.id} className="bg-white p-6 rounded-3xl shadow-sm flex items-center justify-between"><div className="flex items-center gap-6"><img src={item.image} className="w-16 h-16 object-contain"/><span className="font-black text-xs uppercase">{item.name} x {item.quantity}</span></div><span className="font-black">BDT {(item.price * item.quantity).toLocaleString()}</span></div>)}
                 <div className="pt-10 border-t border-slate-100 flex flex-col items-center gap-6">
-                  <div className="flex justify-between w-full max-sm"><span className="text-lg font-black uppercase text-slate-400">Total</span><span className="text-2xl font-black">BDT {cartTotal.toLocaleString()}</span></div>
+                  <div className="flex flex-col gap-2 w-full max-sm mb-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black uppercase text-slate-400 tracking-widest">Subtotal</span>
+                      <span className="text-sm font-black">BDT {cartTotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                      <span className="text-xs font-black uppercase text-slate-400 tracking-widest">Delivery Fee</span>
+                      <span className="text-sm font-black text-green-600">0 TK</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between w-full max-sm">
+                    <span className="text-lg font-black uppercase text-slate-400 tracking-widest">Grand Total</span>
+                    <span className="text-2xl font-black">BDT {grandTotal.toLocaleString()}</span>
+                  </div>
                   <button onClick={startCheckout} className="bg-black text-white px-20 py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-[#FFB800] hover:text-black transition-all shadow-xl">Confirm Deployment</button>
                 </div>
               </div>
