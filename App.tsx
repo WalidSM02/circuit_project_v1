@@ -2144,7 +2144,7 @@ const renderCheckoutFlow = () => {
                 <div className="space-y-4">
                   <h2 className="text-xl font-black text-center uppercase mb-6 tracking-widest text-slate-900">Lab Access Hub</h2>
                   <button onClick={() => { setAuthPersona('admin'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-900 text-white rounded-[24px] hover:bg-black transition-colors group shadow-xl"><AdminIconSmall /> <span className="text-xs font-black uppercase tracking-widest group-hover:text-[#FFB800]">Central Admin</span></button>
-                  <button onClick={() => { setAuthPersona('user'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-100 rounded-[24px] hover:bg-slate-200 transition-colors group shadow-inner"><UserIconSmall /> <span className="text-xs font-black uppercase tracking-widest text-slate-600 group-hover:text-black">Researcher Account</span></button>
+                  <button onClick={() => { setAuthPersona('user'); setAuthStep('form'); setAuthMode('signin'); }} className="w-full flex items-center gap-6 p-6 bg-slate-100 rounded-[24px] hover:bg-slate-200 transition-colors group shadow-inner"><UserIconSmall /> <span className="text-xs font-black uppercase tracking-widest text-slate-600 group-hover:text-black">User Account</span></button>
                 </div>
               ) : authStep === 'form' ? (
                 <div className="space-y-6">
@@ -2171,7 +2171,7 @@ const renderCheckoutFlow = () => {
                         onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
                         className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-black transition-colors underline"
                       >
-                        {authMode === 'signin' ? "Need a researcher account? Join the lab" : "Already registered? Back to sign in"}
+                        {authMode === 'signin' ? "Need a User account? Join the lab" : "Already registered? Back to sign in"}
                       </button>
                     </div>
                   )}
@@ -2303,7 +2303,7 @@ const renderCheckoutFlow = () => {
                 )}
               </div>
             ) : null}
-            <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); setCurrentTab(NavigationTab.HOME); setSelectedProject(null); }} className="bg-[#f44336] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Terminate Session</button></div>
+            <div className="mt-16 flex justify-center"><button onClick={() => { setIsLoggedIn(false); setCurrentUser(null); setCurrentTab(NavigationTab.HOME); setSelectedProject(null); }} className="bg-[#f44336] text-white px-12 py-3.5 rounded font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Log OUT</button></div>
           </div>
         ) : (
           <div className="max-w-4xl mx-auto py-20 px-8 text-center">
