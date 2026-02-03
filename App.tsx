@@ -2038,7 +2038,7 @@ const renderCheckoutFlow = () => {
               <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-100 space-y-6">
                 <div>
                   <span className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">bKash Account (Personal)</span>
-                  <p className="text-3xl font-black text-pink-600 tracking-wider">01768-466333</p>
+                  <p className="text-3xl font-black text-pink-600 tracking-wider">01601-582379</p>
                 </div>
                 <div className="pt-6 border-t border-slate-200">
                   <div className="flex justify-between items-center mb-2">
