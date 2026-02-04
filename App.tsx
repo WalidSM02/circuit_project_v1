@@ -559,22 +559,22 @@ const handleDeleteProject = async (projectId: string) => {
     setCheckoutStep('info');
   };
 
-const handleFinalizeOrder = async () => { // <--- Added 'async'
+const handleFinalizeOrder = async () => {
     if (!currentUser || !trxId.trim()) {
       addNotification("Please enter bKash Transaction ID.");
       return;
     }
 
+    // ... (Your existing address logic stays here) ...
     const shippingAddr = currentUser.addresses.find(a => a.id === selectedShippingId);
     const billingAddr = currentUser.addresses.find(a => a.id === selectedBillingId);
-
     const deliveryFee = 0;
-    const finalTotal = cartTotal + deliveryFee; 
+    const finalTotal = cartTotal + deliveryFee;
 
     const newOrder: Order = {
       id: tempOrderId,
       date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
-      items: JSON.parse(JSON.stringify(cart)), 
+      items: JSON.parse(JSON.stringify(cart)),
       total: finalTotal,
       status: 'Confirmed',
       trxId: trxId.trim(),
@@ -585,16 +585,15 @@ const handleFinalizeOrder = async () => { // <--- Added 'async'
       userPhone: currentUser.phone
     };
 
-    // --- CLOUD SAVE (THE MISSING PART) ---
     try {
       const userRef = doc(db, "users", currentUser.email);
       
-      // Send to Firebase Cloud
-      await updateDoc(userRef, {
+      // FIX: Use setDoc with merge: true instead of updateDoc
+      // This creates the user file if it's missing!
+      await setDoc(userRef, {
         orders: arrayUnion(newOrder)
-      });
+      }, { merge: true });
 
-      // Clear local cart
       setCart([]);
       setCheckoutStep(null);
       setTrxId('');
