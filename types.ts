@@ -27,6 +27,7 @@ export interface Project {
   addedToCartRecently?: number;
   priceAdjustmentType?: 'none' | 'reduced' | 'increased';
   priceAdjustmentAmount?: number;
+  type?: 'physical' | 'digital'; // <--- ADD THIS LINE
 }
 
 export interface CartItem extends Project {

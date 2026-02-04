@@ -3,17 +3,20 @@ import { Project, CartItem, NavigationTab } from './types';
 import { PROJECTS, SIDEBAR_CATEGORIES, LOGO_SVG } from './constants';
 import { HeroCarousel } from './components/HeroCarousel';
 import { ProjectCard } from './components/ProjectCard';
-
+import { db } from './firebase'; 
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, arrayUnion, getDoc } from 'firebase/firestore';
+// Define what an Order Status can be
+type OrderStatus = 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Cancelled';
 // ==========================================
 // SYSTEM CONFIGURATION - ADMIN CREDENTIALS
 // ==========================================
-const ADMIN_CONFIG = {
+/*const ADMIN_CONFIG = {
   email: 'sheikhwalid017@gmail.com',
   password: 'sheikhwalid123',
   firstName: 'Admin',
   lastName: 'Root'
 };
-
+*/
 const CATEGORY_PREFIXES: Record<string, string> = {
   'BREADBOARD PROJECTS': 'BBP',
   'ARDUINO PROJECTS': 'ARD',
@@ -95,26 +98,16 @@ const AccountCard: React.FC<{ icon: React.ReactNode; label: string; onClick?: ()
 
 const App: React.FC = () => {
   // Persistence Initialization
-  const [inventory, setInventory] = useState<Project[]>(() => {
-    const saved = localStorage.getItem('cp_inventory');
-    return saved ? JSON.parse(saved) : PROJECTS;
+// Start with empty arrays (Firebase will fill them instantly)
+  const [inventory, setInventory] = useState<Project[]>([]);
+  const [verifiedUsers, setVerifiedUsers] = useState<UserData[]>([]);
+  const [isSignUp, setIsSignUp] = useState(false);
+// Keep the persistent session logic for currentUser (It's good UX)
+  const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
+    const saved = localStorage.getItem('cp_active_session');
+    return saved ? JSON.parse(saved) : null;
   });
-
-  const [verifiedUsers, setVerifiedUsers] = useState<UserData[]>(() => {
-    const saved = localStorage.getItem('cp_users');
-    if (saved) return JSON.parse(saved);
-    return [{
-      firstName: ADMIN_CONFIG.firstName,
-      lastName: ADMIN_CONFIG.lastName,
-      email: ADMIN_CONFIG.email,
-      password: ADMIN_CONFIG.password,
-      role: 'admin',
-      phone: 'SYSTEM',
-      addresses: [],
-      orders: [],
-      reviews: []
-    }];
-  });
+  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('cp_active_session'));
 // Add this with your other states
   // --- REVIEW SYSTEM STATE ---
   const [isWritingReview, setIsWritingReview] = useState(false);
@@ -122,16 +115,6 @@ const App: React.FC = () => {
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
   const [viewingReceipt, setViewingReceipt] = useState<Order | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
-  // --- PERSISTENCE UPGRADE ---
-  // Initialize state by checking localStorage first
-  const [currentUser, setCurrentUser] = useState<UserData | null>(() => {
-    const savedSession = localStorage.getItem('cp_active_session');
-    return savedSession ? JSON.parse(savedSession) : null;
-  });
-
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return !!localStorage.getItem('cp_active_session');
-  });
   const [showAuthModal, setShowAuthModal] = useState(false);
   
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -244,13 +227,32 @@ const App: React.FC = () => {
   }, []);
 
   // Sync to Storage
-  useEffect(() => {
-    localStorage.setItem('cp_inventory', JSON.stringify(inventory));
-  }, [inventory]);
 
+// --- REAL-TIME DATABASE SYNC ---
   useEffect(() => {
-    localStorage.setItem('cp_users', JSON.stringify(verifiedUsers));
-  }, [verifiedUsers]);
+    // 1. Listen to Inventory Changes
+    const unsubInv = onSnapshot(collection(db, "inventory"), (snapshot) => {
+      const liveData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      setInventory(liveData);
+    });
+
+    // 2. Listen to User Changes
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      const liveUsers = snapshot.docs.map(doc => ({ email: doc.id, ...doc.data() } as UserData));
+      setVerifiedUsers(liveUsers);
+      
+      // Live-update the logged-in user if their data changes in the cloud
+      if (currentUser) {
+        const myProfile = liveUsers.find(u => u.email === currentUser.email);
+        if (myProfile) {
+           setCurrentUser(myProfile);
+           localStorage.setItem('cp_active_session', JSON.stringify(myProfile));
+        }
+      }
+    });
+
+    return () => { unsubInv(); unsubUsers(); };
+  }, [currentUser?.email]); // Re-attach listener if user email changes slightly
 
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -290,57 +292,95 @@ const App: React.FC = () => {
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 4000);
   };
 
-const handleAuthSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSending(true);
+const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const normalizedEmail = email.toLowerCase().trim();
 
-    setTimeout(() => {
-      const normalizedEmail = email.toLowerCase().trim();
+    // --- 1. SPECIAL ADMIN CHECK (Hardcoded) ---
+    if (normalizedEmail === 'admin@gmail.com' && password === 'admin123') { 
+      const adminUser: UserData = {
+        firstName: 'Master',
+        lastName: 'Admin',
+        email: normalizedEmail,
+        phone: '01700000000',
+        password: password,
+        role: 'admin', 
+        addresses: [],
+        orders: [],
+        reviews: []
+      };
+      setCurrentUser(adminUser);
+      setIsLoggedIn(true);
+      setShowAuthModal(false);
+      addNotification("Welcome back, Commander.");
+      return; 
+    }
 
-      if (authMode === 'signin') {
-        // --- LOGIN LOGIC ---
-        const user = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail && u.password === password);
-        if (user) {
-          // DIRECTLY LOG IN (No OTP)
-          setIsLoggedIn(true);
-          setCurrentUser(user);
-          setShowAuthModal(false);
-          setAuthStep('persona');
-          addNotification(`Authorized: Welcome, ${user.firstName}`);
-        } else {
-          addNotification("Invalid credentials.");
-        }
-      } else {
-        // --- SIGN UP LOGIC ---
-        const exists = verifiedUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-        if (exists) {
-          addNotification("Email already registered.");
-        } else {
-          const newUser: UserData = { 
-            firstName, 
-            lastName, 
-            email: normalizedEmail, 
-            phone, 
-            password, 
-            role: 'user', 
-            addresses: [], 
-            orders: [], 
-            reviews: [] 
-          };
-          
-          // DIRECTLY REGISTER AND LOG IN (No OTP)
-          setVerifiedUsers(prev => [...prev, newUser]);
-          setIsLoggedIn(true);
-          setCurrentUser(newUser);
-          setShowAuthModal(false);
-          setAuthStep('persona');
-          addNotification(`Welcome to the Lab, ${firstName}`);
-        }
-      }
-      setIsSending(false);
-    }, 800);
-  };
+    // --- 2. REGULAR USER LOGIC ---
+    
+    // CHANGED THIS LINE: We now check 'authMode' instead of 'isSignUp'
+    if (authMode === 'signup') { 
+      if (!firstName || !lastName || !phone) {
+        addNotification("Please fill in all fields.");
+        return;
+      }
 
+      try {
+        const userRef = doc(db, "users", normalizedEmail);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+          addNotification("User already exists. Please log in.");
+          return;
+        }
+
+        const newUser: UserData = { 
+           firstName, lastName, email: normalizedEmail, phone, password, 
+           role: 'user', addresses: [], orders: [], reviews: [] 
+        };
+
+        await setDoc(userRef, newUser);
+        
+        setCurrentUser(newUser);
+        setIsLoggedIn(true);
+        setShowAuthModal(false);
+        addNotification(`Welcome, ${firstName}!`);
+        
+      } catch (error) {
+        console.error("Signup Error:", error);
+        addNotification("Signup failed.");
+      }
+
+    // LOG IN LOGIC
+    } else {
+      if (!normalizedEmail || !password) {
+        addNotification("Please enter email and password.");
+        return;
+      }
+
+      try {
+        const userRef = doc(db, "users", normalizedEmail);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+          const userData = userSnap.data() as UserData;
+          if (userData.password === password) {
+            setCurrentUser(userData);
+            setIsLoggedIn(true);
+            setShowAuthModal(false);
+            addNotification("Login Successful.");
+          } else {
+            addNotification("Incorrect Password.");
+          }
+        } else {
+          addNotification("User not found. Please Sign Up.");
+        }
+      } catch (error) {
+        console.error("Login Error:", error);
+        addNotification("Login failed.");
+      }
+    }
+  };
   const handleVerifyCode = (e: React.FormEvent) => {
     e.preventDefault();
     if (verificationInput === systemOTP && tempUser) {
@@ -434,79 +474,53 @@ const handleAuthSubmit = (e: React.FormEvent) => {
     return `${prefix}-${nextNum}`;
   };
 
-  const handleSaveProject = (e: React.FormEvent) => {
+const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!projectForm.name || !projectForm.price) return;
 
-    const sellingPrice = projectForm.price || 0;
-    const adjustmentType = projectForm.priceAdjustmentType || 'none';
-    const adjustmentAmount = projectForm.priceAdjustmentAmount || 0;
-    
-    let finalOriginalPrice: number | undefined = undefined;
-    let finalDiscount: string | undefined = undefined;
-
-    if (adjustmentType === 'reduced' && adjustmentAmount > 0) {
-      finalOriginalPrice = sellingPrice + adjustmentAmount;
-      finalDiscount = `- BDT ${adjustmentAmount.toLocaleString()}`;
-    } else if (adjustmentType === 'increased' && adjustmentAmount > 0) {
-      finalOriginalPrice = sellingPrice - adjustmentAmount;
-      finalDiscount = `+ BDT ${adjustmentAmount.toLocaleString()}`;
+    try {
+      if (editingProject) {
+        // --- EDIT EXISTING (Cloud) ---
+        const projectRef = doc(db, "inventory", editingProject.id);
+        await setDoc(projectRef, projectForm, { merge: true });
+        addNotification("Product updated in Cloud.");
+      } else {
+        // --- ADD NEW (Cloud) ---
+        const newId = `proj-${Date.now()}`;
+        const newProject = { ...projectForm, id: newId };
+        await setDoc(doc(db, "inventory", newId), newProject);
+        addNotification("New Product Live!");
+      }
+      setIsAddingProject(false);
+      setEditingProject(null);
+      // Reset Form
+      setProjectForm({ 
+         name: '', category: 'Arduino', price: 0, description: '', 
+         image: '', rating: 5, reviewCount: 0, 
+         features: [], type: 'physical' 
+      });
+    } catch (error) {
+      console.error("Error saving:", error);
+      addNotification("Failed to save product.");
     }
-
-    const processedFeatures = Array.isArray(projectForm.features) 
-      ? projectForm.features 
-      : (projectForm.features as any)?.split('\n').filter((f: string) => f.trim() !== '') || [];
-
-    const processedPackage = Array.isArray(projectForm.packageIncludes) 
-      ? projectForm.packageIncludes 
-      : (projectForm.packageIncludes as any)?.split('\n').filter((f: string) => f.trim() !== '') || [];
-
-    if (editingProject) {
-      setInventory(prev => prev.map(p => p.id === editingProject.id ? { 
-        ...p, 
-        ...projectForm, 
-        price: sellingPrice,
-        originalPrice: finalOriginalPrice,
-        discount: finalDiscount,
-        rating: Number(projectForm.rating ?? 5),
-        reviewCount: Number(projectForm.reviewCount ?? 0),
-        purchasedRecently: Number(projectForm.purchasedRecently ?? 0),
-        addedToCartRecently: Number(projectForm.addedToCartRecently ?? 0),
-        features: processedFeatures,
-        packageIncludes: processedPackage
-      } as Project : p));
-      addNotification("Blueprint updated successfully.");
-    } else {
-      const newProject: Project = { 
-        id: `proj-${Date.now()}`,
-        name: projectForm.name || '',
-        description: projectForm.description || '',
-        detailedDescription: projectForm.detailedDescription || '',
-        price: sellingPrice,
-        originalPrice: finalOriginalPrice,
-        discount: finalDiscount,
-        category: projectForm.category || SIDEBAR_CATEGORIES[0],
-        image: projectForm.image || '',
-        specs: projectForm.specs || [],
-        features: processedFeatures,
-        packageIncludes: processedPackage,
-        detailedSpecs: projectForm.detailedSpecs || {},
-        reference: projectForm.reference || generateReference(projectForm.category || SIDEBAR_CATEGORIES[0]),
-        rating: Number(projectForm.rating ?? 5),
-        reviewCount: Number(projectForm.reviewCount ?? 0),
-        inStock: projectForm.inStock ?? true,
-        video: projectForm.video,
-        priceAdjustmentType: adjustmentType,
-        priceAdjustmentAmount: adjustmentAmount,
-        purchasedRecently: Number(projectForm.purchasedRecently ?? 0),
-        addedToCartRecently: Number(projectForm.addedToCartRecently ?? 0)
-      };
-      setInventory(prev => [newProject, ...prev]);
-      addNotification("New blueprint added to lab inventory.");
-    }
-    setIsAddingProject(false);
-    setEditingProject(null);
   };
+const handleDeleteProject = async (projectId: string) => {
+    // 1. Confirm before deleting (Safety)
+    if (!window.confirm("Are you sure you want to delete this product from the Cloud?")) {
+      return;
+    }
 
+    try {
+      // 2. Delete the document from the 'inventory' collection
+      await deleteDoc(doc(db, "inventory", projectId));
+      addNotification("Product deleted permanently.");
+      
+      // Note: The real-time listener will automatically remove it from the screen
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      addNotification("Failed to delete product.");
+    }
+  };
   const handleLocalImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -545,7 +559,7 @@ const handleAuthSubmit = (e: React.FormEvent) => {
     setCheckoutStep('info');
   };
 
-const handleFinalizeOrder = () => {
+const handleFinalizeOrder = async () => { // <--- Added 'async'
     if (!currentUser || !trxId.trim()) {
       addNotification("Please enter bKash Transaction ID.");
       return;
@@ -554,16 +568,14 @@ const handleFinalizeOrder = () => {
     const shippingAddr = currentUser.addresses.find(a => a.id === selectedShippingId);
     const billingAddr = currentUser.addresses.find(a => a.id === selectedBillingId);
 
-    // --- CHANGE STARTS HERE ---
-    const deliveryFee = 0; // Explicitly set to zero
+    const deliveryFee = 0;
     const finalTotal = cartTotal + deliveryFee; 
-    // --- CHANGE ENDS HERE ---
 
     const newOrder: Order = {
       id: tempOrderId,
       date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
       items: JSON.parse(JSON.stringify(cart)), 
-      total: finalTotal, // Use the total that includes the 0 fee
+      total: finalTotal,
       status: 'Confirmed',
       trxId: trxId.trim(),
       shippingAddress: shippingAddr,
@@ -573,38 +585,55 @@ const handleFinalizeOrder = () => {
       userPhone: currentUser.phone
     };
 
-    const updatedUser = { 
-      ...currentUser, 
-      orders: [newOrder, ...(currentUser.orders || [])] 
-    };
-    
-    setCurrentUser(updatedUser);
-    setVerifiedUsers(prev => prev.map(u => 
-      u.email.toLowerCase() === updatedUser.email.toLowerCase() ? updatedUser : u
-    ));
-    
-    setCart([]);
-    setCheckoutStep(null);
-    setTrxId('');
-    setTempOrderId('');
-    addNotification("Purchase successful! Database updated.");
-    setCurrentTab(NavigationTab.ACCOUNT);
-    setAccountSubView('orders');
+    // --- CLOUD SAVE (THE MISSING PART) ---
+    try {
+      const userRef = doc(db, "users", currentUser.email);
+      
+      // Send to Firebase Cloud
+      await updateDoc(userRef, {
+        orders: arrayUnion(newOrder)
+      });
+
+      // Clear local cart
+      setCart([]);
+      setCheckoutStep(null);
+      setTrxId('');
+      setTempOrderId('');
+      addNotification("Order Sent to Admin Dashboard!");
+      setCurrentTab(NavigationTab.ACCOUNT);
+      setAccountSubView('orders');
+
+    } catch (error) {
+      console.error("Order Failed:", error);
+      addNotification("Failed to place order. Check console.");
+    }
   };
 
-  const updateOrderStatus = (userEmail: string, orderId: string, newStatus: Order['status']) => {
-    setVerifiedUsers(prev => prev.map(user => {
-      if (user.email.toLowerCase() === userEmail.toLowerCase()) {
-        const updatedOrders = user.orders.map(order => 
+const updateOrderStatus = async (targetUserEmail: string, orderId: string, newStatus: OrderStatus) => {
+    // 1. Safety Check: If it's the Admin's own test order (local), ignore Cloud
+    if (targetUserEmail === 'admin@gmail.com') return;
+
+    try {
+      // 2. Find the User in the Cloud Database
+      const userRef = doc(db, "users", targetUserEmail);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        const userData = userSnap.data() as UserData;
+        
+        // 3. Update the specific order in their personal list
+        const updatedOrders = userData.orders.map(order => 
           order.id === orderId ? { ...order, status: newStatus } : order
         );
-        const updatedUser = { ...user, orders: updatedOrders };
-        if (currentUser?.email.toLowerCase() === userEmail.toLowerCase()) setCurrentUser(updatedUser);
-        return updatedUser;
+
+        // 4. Save the updated list back to the Cloud
+        await updateDoc(userRef, { orders: updatedOrders });
+        addNotification(`Order status updated to ${newStatus}`);
       }
-      return user;
-    }));
-    addNotification(`Status changed to ${newStatus}`);
+    } catch (error) {
+      console.error("Error updating order:", error);
+      addNotification("Failed to update status.");
+    }
   };
 
 const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = false) => {
@@ -1606,17 +1635,15 @@ const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = fals
               >
                 Edit
               </button>
-              <button 
-                onClick={() => {
-                  if(confirm("Confirm deletion?")) {
-                    setInventory(prev => prev.filter(x => x.id !== p.id));
-                    addNotification("Project removed.");
-                  }
-                }} 
-                className="px-5 py-2.5 bg-white border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-500 hover:border-red-500 transition-colors"
-              >
-                Delete
-              </button>
+<button 
+  onClick={() => handleDeleteProject(p.id)} 
+  className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
+  title="Delete Product"
+>
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+</button>
             </div>
           </div>
         ))}
