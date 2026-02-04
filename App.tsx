@@ -565,7 +565,6 @@ const handleFinalizeOrder = async () => {
       return;
     }
 
-    // ... (Your existing address logic stays here) ...
     const shippingAddr = currentUser.addresses.find(a => a.id === selectedShippingId);
     const billingAddr = currentUser.addresses.find(a => a.id === selectedBillingId);
     const deliveryFee = 0;
@@ -588,9 +587,13 @@ const handleFinalizeOrder = async () => {
     try {
       const userRef = doc(db, "users", currentUser.email);
       
-      // FIX: Use setDoc with merge: true instead of updateDoc
-      // This creates the user file if it's missing!
+      // --- THE MAGIC FIX ---
+      // We use setDoc with { merge: true } instead of updateDoc.
+      // If the user is missing in Cloud, this CREATES them instantly.
       await setDoc(userRef, {
+        email: currentUser.email, // Ensure email is saved
+        firstName: currentUser.firstName, // Save basic info just in case
+        lastName: currentUser.lastName,
         orders: arrayUnion(newOrder)
       }, { merge: true });
 
@@ -607,7 +610,6 @@ const handleFinalizeOrder = async () => {
       addNotification("Failed to place order. Check console.");
     }
   };
-
 const updateOrderStatus = async (targetUserEmail: string, orderId: string, newStatus: OrderStatus) => {
     // 1. Safety Check: If it's the Admin's own test order (local), ignore Cloud
     if (targetUserEmail === 'admin@gmail.com') return;
