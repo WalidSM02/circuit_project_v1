@@ -3,6 +3,7 @@ import { Project, CartItem, NavigationTab } from './types';
 import { PROJECTS, SIDEBAR_CATEGORIES, LOGO_SVG } from './constants';
 import { HeroCarousel } from './components/HeroCarousel';
 import { ProjectCard } from './components/ProjectCard';
+import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { db } from './firebase'; 
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, arrayUnion, getDoc } from 'firebase/firestore';
 // Define what an Order Status can be
@@ -687,7 +688,7 @@ const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = fals
     }, [] as UserReview[]);
   };
 
-  const renderProjectDetails = () => {
+const renderProjectDetails = () => {
     if (!selectedProject) return null;
 
     const isReduced = selectedProject.priceAdjustmentType === 'reduced' || (selectedProject.originalPrice && selectedProject.price < selectedProject.originalPrice);
@@ -695,6 +696,20 @@ const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = fals
     
     return (
       <div className="max-w-7xl mx-auto px-8 py-12 animate-in fade-in slide-in-from-bottom-2">
+        
+        {/* --- SEO METADATA (NEW) --- */}
+        <Helmet>
+          <title>{selectedProject.name} | Circuit Projects BD</title>
+          <meta name="description" content={`Buy ${selectedProject.name} in Bangladesh. ${selectedProject.description ? selectedProject.description.slice(0, 150) : 'Best electronics project kit in BD.'}...`} />
+          
+          {/* Open Graph / Facebook / LinkedIn Previews */}
+          <meta property="og:title" content={selectedProject.name} />
+          <meta property="og:description" content={`Get this project for BDT ${selectedProject.price}. Available now at Circuit Projects.`} />
+          <meta property="og:image" content={selectedProject.image} />
+          <meta property="og:type" content="product" />
+        </Helmet>
+        {/* ------------------------- */}
+
         <button 
           onClick={() => { setCurrentTab(NavigationTab.HOME); setSelectedProject(null); setDetailQuantity(1); setActiveDetailTab(0); }}
           className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 hover:text-black mb-8 transition-colors"
@@ -767,9 +782,9 @@ const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = fals
               </div>
               
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex items-center justify-between mb-8">
-                 <div className="flex flex-col">
-                   <span className="text-[10px] font-black uppercase text-green-500 italic mb-2">Discount Ends In</span>
-                   <div className="flex gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase text-green-500 italic mb-2">Discount Ends In</span>
+                    <div className="flex gap-4">
                       {[
                         { label: 'Days', val: timeLeft.days },
                         { label: 'Hours', val: timeLeft.hours },
@@ -783,19 +798,19 @@ const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = fals
                           </span>
                         </div>
                       ))}
-                   </div>
-                 </div>
-                 <div className="text-right">
-                   <div className="flex gap-1 text-[#FFB800] mb-1">
-                     {[1,2,3,4,5].map(s => <svg key={s} className={`w-4 h-4 ${s <= selectedProject.rating ? 'fill-current' : 'text-slate-200'}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
-                   </div>
-                   <span onClick={() => setActiveDetailTab(2)} className="text-[10px] font-black uppercase text-slate-400 cursor-pointer hover:text-black underline">Read the review</span>
-                   <p className="text-[9px] font-bold text-slate-500 mt-1">Avg Rating: {selectedProject.rating}/5 • Reviews: {selectedProject.reviewCount || reviews.length}</p>
-                 </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex gap-1 text-[#FFB800] mb-1">
+                      {[1,2,3,4,5].map(s => <svg key={s} className={`w-4 h-4 ${s <= selectedProject.rating ? 'fill-current' : 'text-slate-200'}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
+                    </div>
+                    <span onClick={() => setActiveDetailTab(2)} className="text-[10px] font-black uppercase text-slate-400 cursor-pointer hover:text-black underline">Read the review</span>
+                    <p className="text-[9px] font-bold text-slate-500 mt-1">Avg Rating: {selectedProject.rating}/5 • Reviews: {selectedProject.reviewCount || reviews.length}</p>
+                  </div>
               </div>
 
               <div className="flex gap-4 items-center mb-10">
-                 <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                  <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
                     <button 
                       onClick={() => setDetailQuantity(Math.max(1, detailQuantity - 1))}
                       className="px-6 py-4 hover:bg-slate-100 transition-colors font-black text-slate-400 hover:text-black"
@@ -810,31 +825,31 @@ const addToCart = (proj: Project, qty: number = 1, forceComplete: boolean = fals
                       onClick={() => setDetailQuantity(detailQuantity + 1)}
                       className="px-6 py-4 hover:bg-slate-100 transition-colors font-black text-slate-400 hover:text-black"
                     >＋</button>
-                 </div>
-                 <button 
-                  onClick={() => addToCart(selectedProject, detailQuantity)}
-                  className="flex-1 bg-[#8cc63f] hover:brightness-105 text-white py-4 rounded-xl flex items-center justify-center gap-3 shadow-xl shadow-green-100 transition-all font-black uppercase text-xs tracking-widest active:scale-95"
-                 >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" strokeWidth="2.5"/></svg>
-                    Add to Cart
-                 </button>
+                  </div>
+                  <button 
+                   onClick={() => addToCart(selectedProject, detailQuantity)}
+                   className="flex-1 bg-[#8cc63f] hover:brightness-105 text-white py-4 rounded-xl flex items-center justify-center gap-3 shadow-xl shadow-green-100 transition-all font-black uppercase text-xs tracking-widest active:scale-95"
+                  >
+                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" strokeWidth="2.5"/></svg>
+                     Add to Cart
+                  </button>
               </div>
 
               <div className="space-y-2">
-                 <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600">
-                    <span className="text-red-500">🔥 {selectedProject.purchasedRecently || 0} people</span> have purchased this recently
-                 </div>
-                 <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600">
-                    <span className="text-orange-500">{selectedProject.addedToCartRecently || 0} people</span> added this item to cart in last 10 days
-                 </div>
-                 <div className="pt-4 flex flex-col gap-2">
-                    <span className="text-[11px] font-black uppercase text-slate-800">
-                      {selectedProject.stockCount || 13} items in stock in {selectedProject.stockLocation || 'Uttara, Dhaka'}
-                    </span>
-                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                       <div className="bg-blue-50 h-full rounded-full" style={{ width: '65%' }} />
-                    </div>
-                 </div>
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600">
+                     <span className="text-red-500">🔥 {selectedProject.purchasedRecently || 0} people</span> have purchased this recently
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-600">
+                     <span className="text-orange-500">{selectedProject.addedToCartRecently || 0} people</span> added this item to cart in last 10 days
+                  </div>
+                  <div className="pt-4 flex flex-col gap-2">
+                     <span className="text-[11px] font-black uppercase text-slate-800">
+                       {selectedProject.stockCount || 13} items in stock in {selectedProject.stockLocation || 'Uttara, Dhaka'}
+                     </span>
+                     <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="bg-blue-50 h-full rounded-full" style={{ width: '65%' }} />
+                     </div>
+                  </div>
               </div>
             </div>
           </div>
@@ -2120,7 +2135,9 @@ const renderCheckoutFlow = () => {
     );
   };
 
-  return (
+return (
+  // START WRAPPING HERE
+  <HelmetProvider>
     <div className="min-h-screen bg-[#f8fafc] flex flex-col font-['Inter']">
       <div className="fixed top-24 right-6 z-[300] flex flex-col gap-3">
         {notifications.map(n => <div key={n.id} className="bg-black text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-right-10"><div className="w-2 h-2 bg-[#FFB800] rounded-full animate-pulse"></div><span className="text-xs font-black uppercase">{n.text}</span></div>)}
@@ -2417,7 +2434,9 @@ const renderCheckoutFlow = () => {
           </div>
         </div>
       </footer>
-    </div> // This closes the main container div
+     </div> 
+    </HelmetProvider>
+    // END WRAPPING HERE
   );
 };
 
