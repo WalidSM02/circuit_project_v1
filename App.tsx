@@ -11,13 +11,13 @@ type OrderStatus = 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Cancelle
 // ==========================================
 // SYSTEM CONFIGURATION - ADMIN CREDENTIALS
 // ==========================================
-/*const ADMIN_CONFIG = {
+const ADMIN_CONFIG = {
   email: 'sheikhwalid017@gmail.com',
   password: 'sheikhwalid123',
   firstName: 'Admin',
   lastName: 'Root'
 };
-*/
+
 const CATEGORY_PREFIXES: Record<string, string> = {
   'BREADBOARD PROJECTS': 'BBP',
   'ARDUINO PROJECTS': 'ARD',
